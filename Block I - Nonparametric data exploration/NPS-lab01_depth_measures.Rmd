@@ -2,7 +2,7 @@
 title: "Lab 01 - Depth measures"
 date: 2025-09-25   
 author: "Nonparametric statistics ay 2025/2026"
-output:
+output: 
   
   html_document: 
     df_print: paged
@@ -160,7 +160,7 @@ maha_depth <- depth(df_bivariate_exp,method='Mahalanobis')
 This can be easily hard coded, recall the definition you have seen in
 class:
 
-$${M}_{h}D({F;X} ^ {n}) = \frac{ 1 }{ 1 + {{(x - \mu_F)} ^ {T}}{{\Sigma} ^ {-1}}(x - \mu_F) }$$
+$${M}_{h}D({F_n;\mathbf{x}}) = \frac{ 1 }{ 1 + {{(x - \hat{\mu}_F)} ^ {T}}{{\hat{\Sigma}}_F ^ {-1}}(x - \hat{\mu}_F) }$$
 
 ```{r, class.source="extracode"}
 sample_mean <- colMeans(df_bivariate_exp)
@@ -198,7 +198,7 @@ procedure.
 Let us plot the probability density function (NOT the depth function) of the bivariate exponential distribution we drew a sample from:
 ```{r}
 #install.packages("devtools")
-#devtools::install_local("~/Scaricati/MDBED_1.0.0.tar.gz")   
+#devtools::install_local("~/Downloads/MDBED_1.0.0.tar.gz")   
 library(MDBED)
 PDF_3dPlot(rho = 0, Betax = 1, Betay = 1, title="PDF (NOT depth function) of the bivariate exponential distribution", zlabel="")
 ```
@@ -291,7 +291,7 @@ bagplot(df_contaminated_normals, factor = 3, show.whiskers = T)
 
 *Remember*:
 
-* The *bag* is composed of the deepest 50% of the data (not to be confounded with the $.50$th central region $C_{.5}$, i.e. the smallest region enclosed by depth contours with at least probability $.50$: for that we would need to know the probability density function of the distribution the data came from!)
+* The *bag* is composed of the deepest 50% of the data (not to be confounded with the $.50$th central region $C_{.5}$, i.e. the smallest region enclosed by depth contours with at least probability $.50$: for that we would need to know the probability density function of the distribution the data came from!).
 * The *fence* separates the outliers from the other observations
 * The *loop* contains data between the bag and the fence
 * Naturally, the median (i.e. the deepest datum) is inside the bag.
@@ -422,12 +422,9 @@ bagplot_matrix <- aplpack::bagplot.pairs(df_3)
 You can notice that outlier detection becomes more difficult when the
 dimension increases, as
 
--   some outliers may be wrongly flagged as genuine points
--   some good points may be wrongly flagged as outliers
+-   some outliers may be wrongly flagged as genuine points (**masking**)
+-   some good points may be wrongly flagged as outliers (**swamping**)
 
-These phenomena are respectively denoted as **masking** and
-**swamping**, we will cover it in details during the robust statistics
-module of this course!
 
 Let us conclude this lab session by looking at some DD-plots. For two
 probability distributions $F$ and $G$ , both in $R ^d$, and $D(\cdot)$
@@ -483,8 +480,10 @@ data.
 ### *Breakdown point*
 
 
+The _breakdown point_ measures the minimum data corruption required to bring estimates very far away from the correct values.
+
 ```{r}
-fracs <- seq(0.1, .5, length.out=25)
+fracs <- seq(0.1, .5, length.out=25)  # vector of contamination percentages
 set.seed(41703192)
 n_good <- 100
 df.clean <- data.frame(mvrnorm(n_good, mu_good, sigma_common))
@@ -494,7 +493,7 @@ multivar.median.clean <- depthMedian(df.clean,depth_params = list(method='Tukey'
 mean.diffs <- numeric(length(fracs))
 median.diffs <- numeric(length(fracs))
 
-for (i in 1:length(fracs)){
+for (i in 1:length(fracs)){  # iterate across different values of contamination
   n=100
   # sample points
   frac <- fracs[i]
@@ -520,8 +519,10 @@ lines(x=fracs, y=median.diffs, col="red")
 
 ### Empirical Influence function
 
+
+Now we calculate (empirically) the measure of dependence of the estimator on the value of one of the points in the sample.
 ```{r}
-sim.data <- rnorm(20)
+sim.data <- rnorm(20) # univariate standard normal distribution sample
 stat1 <- function(data){base::mean(data)}
 stat2 <- function(data){median(data)}
 
@@ -533,9 +534,9 @@ stat2.0 <- stat2(sim.data)
 
 EIF1 <- numeric(L)
 EIF2 <- numeric(L)
-for (i in 1:length(grid.for.x)){
+for (i in 1:length(grid.for.x)){   # iterate across different values
   sim.data.i <- sim.data
-  sim.data.i[1] <- grid.for.x[i]
+  sim.data.i[1] <- grid.for.x[i] # change the first value in the sample
   EIF1[i] <- abs(base::mean(sim.data.i) - stat1.0)
   EIF2[i] <- abs(stat2(sim.data.i) - stat2.0)
 }
