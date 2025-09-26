@@ -196,7 +196,7 @@ Please note that anything that comes out of `depthContour` or
 we are performing data exploration by means of a nonparametric
 procedure.
 Let us plot the probability density function (NOT the depth function) of the bivariate exponential distribution we drew a sample from:
-```{r}
+```{r, run=FALSE}
 #install.packages("devtools")
 #devtools::install_local("~/Downloads/MDBED_1.0.0.tar.gz")   
 library(MDBED)

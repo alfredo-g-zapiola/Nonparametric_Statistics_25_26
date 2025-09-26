@@ -1,0 +1,1386 @@
+---
+title: "Lab 04 - Permutational Multivariate Tests"
+author: "Nonparametric Statistics A.Y. 2024-2025"
+date: 2024-10-24
+output:
+  html_document: 
+    df_print: paged
+    toc: true
+  pdf_document: default
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+library(rgl)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = T)
+knitr::knit_hooks$set(webgl = hook_webgl)  # per il plot 3D
+```
+
+```{css, echo=FALSE}
+.extracode {
+background-color: lightblue;
+}
+```
+
+
+
+```{r}
+B = 5e3
+seed = 20
+```
+
+
+## Permutational Multivariate Tests
+
+In this part of the lab, we will directly implement some permutational multivariate tests, applied to specific problems
+Let's start with our first one...
+
+### Two multivariate populations test
+
+We are given data of the week 12/09/2016 -> 18/09/2016 about the number of vehicles that, **each half-hour**, enter Milan Low emission zone (the so called "_area C_"). You want to know if the mean entrance pattern in the weekends is significantly different from the one in the weekdays.
+Framed in a more rigorous way, being 
+
+$$
+\mathbf{y}_{i,w} \overset{iid}{\sim} \mathbf{Y}_{w} \in \mathbb{R}^{48}; \, i \in \{1,...,5\}
+$$ 
+where $w$ denotes the distribution of weekdays, and $i$ is the $i$th day of the week. We also have:
+$$
+\mathbf{y}_{i,\tilde{w}} \overset{iid}{\sim} \mathbf{Y}_{\tilde{w}} \in \mathbb{R}^{48} \; i \in \{6,7\}
+$$
+where $\tilde{w}$ is to denote weekend day.
+We want to test the equality of the two distributions, namely, we want to devise a test of the type:
+$$
+H_0: \mathbf{Y}_{w} \overset{d}{=} \mathbf{Y}_{\tilde{w}}\;vs\;H_1:\mathbf{Y}_{w} \overset{d}{\neq} \mathbf{Y}_{\tilde{w}}
+$$
+
+Let's start by reading and rearranging the data.
+
+```{r}
+# set header = TRUE read the first row in the csv as colnames.
+# for every day, we will have observations corresponding to every half hour
+d1 = read.csv('./data/areac_data/accessi-orari-areac-2016-09-12-00_00_00.csv', header=T)
+d2 = read.csv('./data/areac_data/accessi-orari-areac-2016-09-13-00_00_00.csv', header=T)
+d3 = read.csv('./data/areac_data/accessi-orari-areac-2016-09-14-00_00_00.csv', header=T)
+d4 = read.csv('./data/areac_data/accessi-orari-areac-2016-09-15-00_00_00.csv', header=T)
+d5 = read.csv('./data/areac_data/accessi-orari-areac-2016-09-16-00_00_00.csv', header=T)
+d6 = read.csv('./data/areac_data/accessi-orari-areac-2016-09-17-00_00_00.csv', header=T)
+d7 = read.csv('./data/areac_data/accessi-orari-areac-2016-09-18-00_00_00.csv', header=T)
+
+# we bind the rows corresponding to every day.
+week = rbind(d1[,2], d2[,2], d3[,2], d4[,2], d5[,2],
+             d6[,2], d7[,2])
+# plot
+matplot(seq(0,47)/2, # every half-hour of the day
+        t(week), # we want to plat the columns
+        type='l',
+        col=c(1,1,1,1,1,2,2), # colour weekdays and weekend-days differentlyy
+        lty=1)
+
+```
+
+As you remember, we can actually choose whatever test statistic we may like: if the permutation scheme used during the test is likelihood-invariant, we will get in any case an exact test.
+There are nevertheless better choices than others (in the sense that we have a higher power, as we saw in the previous lab).
+Let's try to use the squared euclidean distance between the two sample mean vectors (admittedly a quite standard choice.)
+
+```{r}
+t1 = week[1:5,]
+t2 = week[6:7,]
+
+t1.mean = colMeans(t1)
+t2.mean = colMeans(t2)
+
+matplot(seq(0,47)/2,
+        t(rbind(t1.mean,t2.mean)), 
+        type='l', col=c(1,2), lty=1,
+        main="Sample multivariate means")
+```
+
+Let's compute the test statistic $T_0 =||\bar{\mathbf{x}}_1 -\bar{\mathbf{x}}_2||_2^2 =(\bar{\mathbf{x}}_1-\bar{\mathbf{x}}_2)^\intercal(\bar{\mathbf{x}}_1-\bar{\mathbf{x}}_2) $ where $||.||_2$ denotes the euclidean norm in $\mathbb{R}^{48}$.
+
+```{r}
+n1 = dim(t1)[1]
+n2 = dim(t2)[1]
+n  = n1 + n2
+
+T20 = as.numeric(t(t1.mean-t2.mean) %*% (t1.mean-t2.mean))  # matrix (vector) product
+T20
+```
+
+To perform our test, we need to compare the test statistic to its (permutational) distribution under $H_0$.
+
+```{r}
+# Estimating the permutational distribution under H0
+
+T2 = numeric(B)
+set.seed(seed)
+for(perm in 1:B){
+  # Random permutation of indexes
+  # When we apply permutations in a multivariate case, we keep the units together
+  # i.e., we only permute the rows of the data matrix
+  t_pooled = rbind(t1,t2)
+  permutation = sample(n)
+  t_perm = t_pooled[permutation,]
+  t1_perm = t_perm[1:n1,]
+  t2_perm = t_perm[(n1+1):n,]
+  
+  # Evaluation of the test statistic on permuted data
+  t1.mean_perm = colMeans(t1_perm)
+  t2.mean_perm = colMeans(t2_perm)
+  T2[perm]  = t(t1.mean_perm-t2.mean_perm) %*% (t1.mean_perm-t2.mean_perm) 
+}
+```
+
+Let's now see the shape of the permutational distribution, compared with the computed test statistic (the green vertical line...)
+
+```{r}
+hist(T2,xlim=range(c(T2,T20)))
+abline(v=T20,col=3,lwd=4)
+
+plot(ecdf(T2))
+abline(v=T20,col=3,lwd=4)
+```
+
+The P-value will be amazingly low... but let's try to calculate it nevertheless.
+Recall the p-value is given by:
+$$
+p = B^{-1}\sum_{b=1}^B\mathbb{I}_{\{T_b \geq T_0 \}}
+$$
+
+```{r}
+p_val = sum(T2>=T20)/B
+p_val
+```
+
+With this P-value, I can say, with a level of confidence higher than $95 \%$ that weekdays and weekends are significantly different
+
+let's see another case now...
+
+
+### Center of symmetry permutation tests
+
+#### Multivariate case
+
+
+We're still in Milan, but now we want to check if the humidity of ($4$) summer months is significantly different from the "non-comfort" threshold level of $(65\%)$. _Id est_,  are interested in the **location** of a (multivariate) distribution.
+
+In other words, being ($i$ represents the sample's $i$th datum )
+$$
+\mathbf{y}_{i} \overset{iid}{\sim} \mathbf{Y} \in \mathbb{R}^{4}
+$$
+, I want to test
+
+$$
+H_0: \mathbb{E}[\mathbf{Y}] = \mathbf{\mu}_{0}\;vs\;H_1:\mathbb{E}[\mathbf{Y}] \neq \mathbf{\mu}_0
+$$
+Let's read and plot the data also here.
+We will have 4 observations ($p=4$) for 7 different year ($n=7$).
+
+```{r}
+hum = read.csv2('./data/humidity_data/307_Umidita_relativa_2008_2014.csv', header=T)
+hum = hum$Media  # we use only the mean humidity
+hum = matrix(hum,  # cast as matrix
+             ncol=12, byrow=T)[,6:9] # so we have n = 7 and p =4
+
+boxplot(hum)
+matplot(t(hum),
+        type='l',
+        lty=1,
+        main="Humidity at different months, at different years (colours)",
+        xlab="humidity",
+        ylab="obs.month")
+
+```
+
+What is a reasonable permutation scheme to implement, and thus what is a reasonable test to perform? It is actually harder with respect to two-sample tests... but if we **assume the distribution to be symmetric**, reflections are permutationally invariant, and thus I can easily test this! Let's define the center of symmetry
+
+```{r}
+mu0      = c(65, 65, 65, 65)
+```
+
+Let's compute the test statistic (here the squared distance between the sample mean and the hypothesised centre, but of course other choices are possible...)
+
+
+```{r}
+x.mean   = colMeans(hum)
+n = dim(hum)[1]
+p = dim(hum)[2]
+
+T20 = as.numeric(t(x.mean-mu0) %*% (x.mean-mu0) )
+```
+
+
+And now, let's compute the permutational distribution!
+
+```{r}
+T2 = numeric(B) 
+set.seed(20)
+
+for(perm in 1:B){
+  # In this case we use changes of signs in place of permutations
+  
+  # Permuted dataset (reflection-based)
+  signs.perm = rbinom(n, 1, 0.5)*2 - 1  
+  hum_perm = mu0 + (hum - mu0) * matrix(signs.perm, nrow=n,ncol=p,byrow=FALSE)  # hadamard product
+  x.mean_perm = colMeans(hum_perm)
+  T2[perm]  = t(x.mean_perm-mu0)  %*% (x.mean_perm-mu0) #n.b. also works without the t, but better to play it safe!
+}
+```
+
+let's plot the permutational distribution of the test statistic
+
+```{r}
+hist(T2,xlim=range(c(T2,T20)))
+abline(v=T20,col=3,lwd=4)
+
+plot(ecdf(T2))
+abline(v=T20,col=3,lwd=4)
+```
+
+and the p-value
+
+```{r}
+p_val <- sum(T2>=T20)/B
+p_val
+
+```
+
+Also here, I can argue that the humidity during the summer months is, with a 95% level of confidence ( _i.e._ 5% of the times I will reject $H_0$ when it is actually true), significantly different from $65%$
+
+#### Univariate case
+
+Of course this generalises the univariate case. We might take the observed humidity at only one month (univariate), and different years are (independent) observations.
+
+In terms of code, this is looking at one column of the matrix.
+
+
+
+```{r}
+x.mean  <- mean(hum[,1])
+mu.0 <- 65
+n = dim(hum)[1]
+p = 1
+
+T20 = (x.mean - mu.0)^2
+
+T2 = numeric(B) 
+set.seed(20)
+
+for(perm in 1:B){
+  # In this case we use changes of signs in place of permutations
+  
+  # Permuted dataset (reflection-based)
+  signs.perm = rbinom(n, 1, 0.5)*2 - 1  
+  hum_perm = as.vector(mu.0 + (hum[,1] - mu.0) * matrix(signs.perm, nrow=n,ncol=1,byrow=FALSE))  # hadamard product
+  x.mean_perm = mean(hum_perm)
+  T2[perm]  = (x.mean_perm-mu.0)**2
+}
+
+```
+
+And we look at the (MC-estimated) permutational distribution of the test statistic under $H_0$
+
+```{r}
+hist(T2,xlim=range(c(T2,T20)))
+abline(v=T20,col=3,lwd=4)
+
+plot(ecdf(T2))
+abline(v=T20,col=3,lwd=4)
+```
+
+and the p-value
+
+```{r}
+p_val <- sum(T2>=T20)/B
+p_val
+
+```
+
+
+### Two sample paired multivariate permutation test
+
+
+In this case, we want to compare the temperature, humidity and wind-speed in 50 different days in Milan and Barcelona.
+We deem $X_M$ the r.v. for the quantity of interest for the population of Milan with unknown distribution $F_M$ and $X_B$ with $F_B$ those of Barcelona.
+We have data:
+$$
+\mathbf{x}_i \stackrel{iid}{\sim} F_M; i \in \{1, ..., N\}
+$$
+_et_
+$$
+\mathbf{y}_i \stackrel{iid}{\sim} F_B; i \in \{1, ..., N\}
+$$
+And, very importantly, the observations are paired:
+$$
+(\mathbf{x}_i - \mathbf{y}_i) \stackrel{iid}{\sim} \tilde{F}
+$$
+for some unknown bivariate distribution $\tilde{F}$
+
+#### Option 1
+
+
+We test:
+$$
+H_0 : \mathbb{E}[X_M-X_B] = \mathbf{0} \, versus \, H_1: \mathbb{E}[X_M-X_B] \neq \mathbf{0}
+$$
+
+Let's read the data
+```{r}
+t1 <- read.table('./data/meteo_data/barcellona.txt', header=T)
+t2 <- read.table('./data/meteo_data/milano.txt', header=T)
+
+```
+
+Let's try to explore the data... we can work with the paired differences and plot them.
+
+```{r}
+library(rgl)
+open3d()
+plot3d(t1-t2, size=3, col='orange', aspect = F)
+points3d(0,0,0, size=6)
+
+p  <- dim(t1)[2]
+n1 <- dim(t1)[1]
+n2 <- dim(t2)[1]
+n <- n1+n2
+
+```
+
+In terms of permutation schemes (and testing strategies...) to follow, the best choice is to compute the differences between the two groups, assume their distribution to be symmetric, and then perform a centre of symmetry test.
+
+What is the best test statistic for the test? let's see...
+
+```{r}
+t1.mean <- colMeans(t1)
+t2.mean <- colMeans(t2)
+t1.cov  <-  cov(t1)
+t2.cov  <-  cov(t2)
+Sp      <- ((n1-1)*t1.cov + (n2-1)*t2.cov)/(n1+n2-2)  # pooled cov matrix
+Spinv   <- solve(Sp)
+
+delta.0 <- c(0,0,0)
+
+diff <- t1-t2
+diff.mean <- colMeans(diff)
+diff.cov <- cov(diff)
+diff.invcov <- solve(diff.cov)
+```
+
+Let's start with the squared euclidean distance between the difference in means and the hypothesised value
+
+```{r}
+T20 <- as.numeric(t(diff.mean-delta.0)  %*% (diff.mean-delta.0))
+```
+
+And then, let's perform the test
+
+```{r}
+T2 <- numeric(B)
+set.seed(seed)
+for(perm in 1:B)
+  {
+  # Random permutation
+  # obs: exchanging data within couples means changing the sign of the difference
+  signs.perm <- rbinom(n1, 1, 0.5)*2 - 1
+  
+  diff_perm <- diff * matrix(signs.perm,nrow=n1,ncol=p,byrow=FALSE)
+  diff.mean_perm <- colMeans(diff_perm)
+  diff.cov_perm <- cov(diff_perm)
+  diff.invcov_perm <- solve(diff.cov_perm)
+  
+  T2[perm] <- as.numeric(t(diff.mean_perm-delta.0) %*% (diff.mean_perm-delta.0))
+  }
+```
+Distribution and pvalue
+
+```{r}
+# plotting the permutational distribution under H0
+hist(T2,xlim=range(c(T2,T20)),breaks=100)
+abline(v=T20,col=3,lwd=4)
+
+plot(ecdf(T2))
+abline(v=T20,col=3,lwd=4)
+
+
+# p-value
+p_val <- sum(T2>=T20)/B
+p_val
+
+```
+
+
+
+Now, let's use the Mahalanobis distance, but "forgetting" about the covariance between the values
+
+```{r}
+T20 <- as.numeric( t(diff.mean-delta.0) %*% solve(diag(diag(diff.cov))) %*% (diff.mean-delta.0))
+# Estimating the permutational distribution under H0
+T2 <- numeric(B)
+set.seed(seed)
+for(perm in 1:B)
+  {
+  # Random permutation
+  # obs: exchanging data within couples means changing the sign of the difference
+  signs.perm <- rbinom(n1, 1, 0.5)*2 - 1
+  
+  diff_perm <- diff * matrix(signs.perm,nrow=n1,ncol=p,byrow=FALSE)
+  diff.mean_perm <- colMeans(diff_perm)
+  diff.cov_perm <- cov(diff_perm)
+  diff.invcov_perm <- solve(diff.cov_perm)
+  
+
+  T2[perm] <- as.numeric((diff.mean_perm-delta.0) %*% solve(diag(diag(diff.cov_perm))) %*% (diff.mean_perm-delta.0))
+  
+}
+
+# plotting the permutational distribution under H0
+hist(T2,xlim=range(c(T2,T20)),breaks=100)
+abline(v=T20,col=3,lwd=4)
+
+plot(ecdf(T2))
+abline(v=T20,col=3,lwd=4)
+
+
+# p-value
+p_val <- sum(T2>=T20)/B
+p_val
+
+```
+
+and lastly, let's use the proper Mahalanobis distance
+
+```{r}
+T20 <- as.numeric((diff.mean-delta.0) %*% diff.invcov %*% (diff.mean-delta.0))
+
+
+
+# Estimating the permutational distribution under H0
+
+set.seed(seed)
+T2 <- numeric(B)
+
+for(perm in 1:B)
+  {
+  # Random permutation
+  # obs: exchanging data within couples means changing the sign of the difference
+  signs.perm <- rbinom(n1, 1, 0.5)*2 - 1
+  
+  diff_perm <- diff * matrix(signs.perm,nrow=n1,ncol=p,byrow=FALSE)
+  diff.mean_perm <- colMeans(diff_perm)
+  diff.cov_perm <- cov(diff_perm)
+  diff.invcov_perm <- solve(diff.cov_perm)
+  
+  #T2[perm] <- as.numeric(n1 * (diff.mean_perm-delta.0) %*% (diff.mean_perm-delta.0))
+  #T2[perm] <- as.numeric(n1 * (diff.mean_perm-delta.0) %*% solve(diag(diag(diff.cov_perm))) %*% (diff.mean_perm-delta.0))
+  T2[perm] <- as.numeric(n1 * (diff.mean_perm-delta.0) %*% diff.invcov_perm %*% (diff.mean_perm-delta.0))
+  }
+
+# plotting the permutational distribution under H0
+hist(T2,xlim=range(c(T2,T20)),breaks=100)
+abline(v=T20,col=3,lwd=4)
+
+plot(ecdf(T2))
+abline(v=T20,col=3,lwd=4)
+
+
+# p-value
+p_val <- sum(T2>=T20)/B
+p_val
+
+```
+
+
+#### Option 2
+
+If you read the _dispensa_ created by Professor Alessia Pini^[Unpublished, _cfr._ the material on Webeep.], you would find an alternative for this test. 
+
+Instead of performing inference on the distribution of 
+$$
+X_M - X_B
+$$
+we treat them "separately": $(X_M, X_B) \sim F$ for some **bivariate** distribution $F$. And of course we require likelihood-invariant transformations under $H_0$
+that respect the paired nature of the test.
+We test:
+$$
+H_0: X_M \stackrel{d}{=} X_B \; vs. \;H_1: X_M \stackrel{d}{\neq} X_B
+$$
+And we have $2^N$ different permutations, since the **exchangeability is only within the pairs**.
+We choose as test statistic the norm of the differences of the means of both samples.
+
+
+```{r}
+T20 <- norm(as.matrix(colMeans(t1) - apply(t2, MARGIN=2, FUN=mean)))
+```
+
+
+```{r}
+T2 <- numeric(B)
+p <- dim(t1)[2] # here naturally I can use t1 or t2.
+n <- dim(t2)[1]
+t.full <- rbind(t1, t2)
+set.seed(seed)
+for(perm in 1:B)
+  {
+  # Random permutation
+  # N.B. exchangeability is only within pairs
+  perm.indices.t1 <- seq(1, n) + n * rbinom(n,1, 0.5)
+  t1.perm <- t.full[perm.indices.t1, ]
+  t2.perm <- t.full[-perm.indices.t1,]
+  
+  T2[perm] <- norm(as.matrix(((colMeans(t1.perm)) - colMeans(t2.perm))))
+}
+
+hist(T2,xlim=range(c(T2,T20)),breaks=100)
+abline(v=T20,col=3,lwd=4)
+
+plot(ecdf(T2))
+abline(v=T20,col=3,lwd=4)
+
+
+# p-value
+p_val <- sum(T2>=T20)/B
+p_val
+```
+
+## Permutational regression: categorical regressors
+
+### Permutational ANOVA
+
+Until now, we have seen how to perform basic statistical tests in a
+nonparametric and, mainly and more importantly, in a permutational
+framework. By going further on this line of thinking, one can perform
+analysis of variance in a fully permutational (and thus exact...)
+setting. The example we will see today is about a fairly old dataset,
+appeared on Biometrika in 1948 (!!). It is about an experiment over a
+number of chickens, fed with different feed types, which were weighted
+by the experimenter. You are interested in determining if the feed type
+has an impact on the chicken weight or not.
+
+Let's import and summarise the dataset
+
+```{r}
+chickwts
+attach(chickwts)
+summary(chickwts)
+```
+
+and, let's try to plot the results, to get a bit of info about what's
+going on...
+
+```{r}
+g <- nlevels(feed)
+n <- dim(chickwts)[1]
+
+plot(feed, weight, xlab='treat',col=rainbow(g),main='Original Data')
+```
+
+The null hypothesis that we want to test is that, being
+$\tau_i, i\in \{1,\ldots6\}$ the generic effect of a given level of the
+treatment.
+$$
+H_0: \tau_i=0\;\forall i\;vs\;H_1:\exists\,\tau_i\neq0 
+$$
+
+Of course we can solve this in a fully parametric (and admittedly not
+robust...) way
+
+```{r}
+fit <- aov(weight ~ feed)
+summary(fit)
+
+```
+
+The strategy that I use to perform permutational ANOVA is to
+"permutationalise" the F statistic, by computing its permutational
+distribution under $H_0$. So...
+
+```{r}
+T0 <- summary(fit)[[1]][1,4]  # extract the test statistic
+T0
+
+```
+
+To compute the distribution, one simply "scales up" the one used for the
+2-sample t-test: I assign at random the treatments (that, under $H_0$,
+should all be equal, and equal to 0)
+
+```{r}
+T_stat <- numeric(B) 
+n <- dim(chickwts)[1]
+
+for(perm in 1:B){
+  # Permutation:
+  permutation <- sample(1:n)
+  weight_perm <- weight[permutation]
+  fit_perm <- aov(weight_perm ~ feed)
+  
+  # Test statistic:
+  T_stat[perm] <- summary(fit_perm)[[1]][1,4]
+}
+
+```
+
+Let's see the distribution, and then the p-value of the permutational
+f-test
+
+```{r}
+hist(T_stat,xlim=range(c(T_stat,T0)),breaks=30)
+abline(v=T0,col=3,lwd=2)
+
+plot(ecdf(T_stat),xlim=c(-1,20))
+abline(v=T0,col=3,lwd=4)
+
+# p-value
+p_val <- sum(T_stat>=T0)/B
+p_val
+```
+
+
+**It can be verified in this case the residual permutation and the data
+permutation are the same**...
+
+```{r}
+T0.fit <- summary(fit)[[1]][1,4]
+
+# residuals under H0 (i.e all tau = 0)
+# weight = mu
+glob.intercept <- mean(weight)
+residuals.H0 <- weight - glob.intercept # subtract global mean
+residuals.H0.aov <- (aov(weight ~ 1))$residuals  # alternative: code model under H0
+all.equal(residuals.H0, as.vector(residuals.H0.aov))
+
+# Note that in this case, permuting the residuals under H0 
+# and permuting the data is exactly the same:
+permutation <- sample(n)
+weight.perm.res <- glob.intercept + residuals.H0[permutation]
+weight.perm        <- weight[permutation]
+
+all.equal(weight.perm.res, weight.perm)
+```
+
+Indeed, with such _perspicacité_, we realise:
+
+#### POV: ANOVA is a special case of a linear model.
+
+Recall we are building a model (under $H_1$)
+$$
+weight_i = \beta_0 + \tau_{j_i} + \epsilon_i\,\,\,, j \in \{1,\ldots6\}
+$$
+whereas under $H_0$ all $\tau_i=0$, so we have
+$$
+weight_i = \beta_0 + \epsilon_i
+$$
+  Under the null hypothesis the model **permuting the residuals** should yield
+likelihood-invariant datasets. However, instead of using the $aov$
+function, we could use $lm$! And moreover we now have access to the
+adjusted R squared statistic (among others!).
+
+```{r}
+typeof(feed)  # even if we have names, since it is a factor
+```
+
+We do the test with the adjusted R squared statistic
+
+```{r}
+T0.chicks <- summary.lm(lm(weight ~ feed))$adj.r.squared
+T0.chicks
+
+
+lm.H0.chicks <- lm(weight ~ 1)
+lm.H0.chicks
+residuals.H0.chicks <- lm.H0.chicks$residuals
+n = length(weight)
+
+T_chicks <- numeric(B)
+set.seed(seed)
+for(perm in 1:B){
+  permutation <- sample(n)
+  residuals.H0.perm <- residuals.H0.chicks[permutation]
+  weight.perm.H0<- lm.H0.chicks$fitted + residuals.H0.perm
+  T_chicks[perm] <- summary.lm(lm(weight.perm.H0~ feed))$adj.r.squared
+}
+
+sum(T0.chicks <= T_chicks)/B
+
+
+```
+
+Or the F statistic (same as before)
+```{r}
+# model under H1
+T0
+T0 <- summary.lm(lm(weight ~ feed ))$f[1]
+T0
+T_chicks <- numeric(B)
+set.seed(seed)
+for(perm in 1:B){
+  permutation <- sample(n)
+  weight.perm <- weight[permutation]
+  T_chicks[perm] <- summary.lm(lm(weight.perm ~ feed ))$f[1]
+  # T_fuel[perm] <- summary.lm(aov(weight.perm ~ feed ))$f[1] # same
+  
+}
+sum(T_chicks >= T0)/B
+
+```
+
+
+#### Why you should be diffident of unknown packages
+
+Let's see what happens instead when using `lmPerm`
+
+```{r, eval=F}
+library(lmPerm)
+lmp=aovp(weight_perm ~ chickwts$feed,
+         perm="Prob",
+         Cp=0.1)#cp is supposed to stop iterations when standard error is at that level...
+summary(lmp)
+```
+
+let's reduce the expected standard error...
+
+```{r, eval=F}
+lmp=aovp(weight_perm ~ chickwts$feed,perm="Prob",Cp=1e-6)
+summary(lmp)
+```
+
+and let's run the instruction several times
+
+```{r, eval=F}
+lmp=aovp(weight_perm ~ chickwts$feed,perm="Prob",Cp=1e-6)
+summary(lmp)
+
+lmp=aovp(weight_perm ~ chickwts$feed,perm="Prob",Cp=1e-6)
+summary(lmp)
+
+lmp=aovp(weight_perm ~ chickwts$feed,perm="Prob",Cp=1e-6)
+summary(lmp)
+
+```
+
+One may hypothesise such variance in the obtained p-value is a
+consequence of the number of iterations. Anyways, **it doesn't really
+make much sense. Don't use it.**
+
+
+Up to now, everything is fairly easy. The situation gets a bit uglier
+when more than one factor is involved in the model
+
+### Permutational Two-Way ANOVA
+
+That is, multiple regression with categorical regressors.
+
+
+In this case we wan to test the efficiency of a car with different
+fuels, which are classified by their **producer** or by their **octane**
+number. I want to see what are the meaningful factors in determining the
+number of kilometers performed with a liter of petrol, interaction
+included...
+
+This time the data is put in by hand...
+
+```{r}
+km          <- c(18.7, 16.8, 20.1, 22.4, 14.0, 15.2, 22.0, 23.3)
+station     <- factor(c('Esso','Esso','Esso','Esso','Shell','Shell','Shell','Shell'))
+fuel        <- factor(c('95','95','98','98','95','95','98','98'))
+station_fuel<- factor(c('Esso95','Esso95','Esso98','Esso98','Shell95','Shell95','Shell98','Shell98'))
+
+M             <- mean(km)
+Mstation      <- tapply(km,      station, mean)
+Mfuel         <- tapply(km,       fuel, mean)
+Mstation_fuel <- tapply(km, station_fuel, mean)
+```
+
+Let's also plot the data
+
+```{r}
+plot(station_fuel, km, col=rainbow(5)[2:5], ylim=c(0,24))
+```
+
+and, of course, I can do everything in a fully parametric setting...
+
+```{r}
+# Parametric test:
+summary(aov(km ~ station + fuel + station:fuel))
+# Without interaction
+summary.aov(aov(km ~ station + fuel))
+# Without station
+summary.aov(aov(km ~ fuel))
+
+```
+
+**To do everything in a permutational setting, I need to recognize that,
+actually, the tests that I need to run are more than one!**
+
+The two-way ANOVA full model is: $$
+Km = \mu + \alpha_i + \beta_j + \gamma_{ij} + \epsilon
+$$
+
+So, I need to see if $\gamma=0$, or $\beta=0$ or $\alpha=0$ and, for
+each of this tests, I have a different permutation scheme.
+
+Let's start with the $$
+H_0:\gamma=0 \; vs \; H_1:\gamma\neq0
+$$
+
+Which means that the model under $H_1$ is given by: $$
+Km = \mu + \alpha_i + \beta_j + \gamma_{ij} +  \epsilon
+$$ And under $H_0$: $$
+Km = \mu + \alpha_i + \beta_j + \epsilon
+$$ , and **permuting the residuals** under this model should yield
+likelihood-invariant datasets. So, let's compute the test statistic
+
+```{r}
+summary.aov(aov(km ~ station + fuel + station:fuel)) 
+T0_station_fuel <- summary.aov(aov(km ~ station + fuel + station:fuel))[[1]][3,4]  # extract the test statistic
+T0_station_fuel
+
+```
+
+and compute the permutational distribution. Note that we have to
+**estimate** the residuals which we will permute.
+
+```{r}
+aov.H0station_fuel <- aov(km ~ station + fuel)
+aov.H0station_fuel
+residuals.H0station_fuel <- aov.H0station_fuel$residuals # estimate residuals
+n = 8
+
+
+T_station_fuel <- numeric(B)
+for(perm in 1:B){
+  permutation <- sample(n)
+  # permute the residuals
+  residuals.H0station_fuel <- residuals.H0station_fuel[permutation]
+  km.perm.H0station_fuel <- aov.H0station_fuel$fitted + residuals.H0station_fuel
+  # re-fit full model to calculate statistic
+  T_station_fuel[perm] <- summary.aov(aov(km.perm.H0station_fuel ~ station + fuel + station:fuel))[[1]][3,4]
+}
+```
+
+And the p-value...
+
+```{r}
+sum(T_station_fuel >= T0_station_fuel)/B
+```
+
+Not significant, meaning that I can reduce the model and then perform my
+test on my main effects.
+
+To test $H_0:\beta=0$ vs $H_1:\beta\neq 0$, I am assuming under $H_0$
+the following model $Km = \mu + \alpha_i + \epsilon$, while for
+$H_0:\alpha=0$ vs $H_1:\alpha\neq0$  I am assuming
+$Km = \mu + \beta_j + \epsilon$ under $H_0$. That is, in the next code
+blocks I will perform **two separate tests\**.
+
+Again, the idea is to permute the residuals under $H_0$, so let's
+compute them.
+
+```{r}
+# Test for station
+T0_station <- summary.aov(aov(km ~ station + fuel))[[1]][1,4]
+# residuals under H0:
+# km = mu + beta*fuel
+aov.H0station <- aov(km ~ fuel)
+residuals.H0station <- aov.H0station$residuals
+
+# Test for fuel
+T0_fuel <- summary.aov(aov(km ~ station + fuel))[[1]][2,4]
+# residuals under H0:
+# km = mu + alpha*station
+aov.H0fuel <- aov(km ~ station)
+residuals.H0fuel <- aov.H0fuel$residuals
+
+```
+
+And let's now compute the permutational distribution, and thus the
+p-value
+
+```{r}
+# Test both factors in a single loop
+B <- 1000
+T_fuel <- T_station <- numeric(B)
+for(perm in 1:B){
+  permutation <- sample(n)
+  
+  # Test station
+  km.perm.H0station <- aov.H0station$fitted + residuals.H0station[permutation]
+  T_station[perm] <- summary.aov(aov(km.perm.H0station ~ station + fuel))[[1]][1,4]
+  
+  # Test fuel
+  km.perm.H0fuel <- aov.H0fuel$fitted + residuals.H0fuel[permutation]
+  T_fuel[perm] <- summary.aov(aov(km.perm.H0fuel ~ station + fuel))[[1]][2,4]
+}
+```
+
+```{r}
+sum(T_station >= T0_station)/B
+```
+
+```{r}
+sum(T_fuel >= T0_fuel)/B
+```
+
+In histograms
+
+```{r}
+hist(T_station)
+abline(v=T0_station)
+
+hist(T_fuel)
+abline(v=T0_fuel)
+```
+
+I can remove station, so let's go on on testing Fuel... which actually
+is a one-way ANOVA... 
+Hence, we have our last hypothesis test: $$
+H_0:  \beta = 0 \implies Km = \mu + \epsilon
+$$ *versus* $$
+H_1:  \beta \neq 0 \implies Km = \mu + \beta_j + \epsilon
+$$ **It can be shown in this case the residual permutation and the data
+permutation are the same**...
+
+```{r}
+# TEST ON THE FACTOR FUEL
+T0_fuel <- summary.aov(aov(km ~  fuel))[[1]][1,4]
+# residuals under H0
+# km = mu
+residuals.H0fuel <- km - M  # subtract global mean
+
+# Note that in this case, permuting the residuals under H0 
+# and permuting the data is exactly the same:
+permutation <- sample(n)
+km.perm.H0fuel <- M + residuals.H0fuel[permutation]
+km.perm        <- km[permutation]
+
+all.equal(km.perm.H0fuel, km.perm)
+```
+
+```{r}
+T_fuel <- numeric(B)
+for(perm in 1:B){
+  permutation <- sample(n)
+  km.perm <- km[permutation]
+  T_fuel[perm] <- summary.lm(aov(km.perm ~ fuel ))$f[1]
+  
+}
+sum(T_fuel >= T0_fuel)/B
+
+```
+
+### Multivariate Analysis of Variance
+
+The strategy behind the multivariate analysis of variance is admittedly
+fairly similar. We use the Iris dataset
+
+```{r}
+data(iris)
+attach(iris)
+head(iris)
+table(iris$Species)
+```
+
+let's arrange it a bit, and plot it.
+
+```{r}
+species.name <- factor(Species, labels=c('setosa','versicolor','virginica'))
+iris4        <- iris[,1:4]
+plot(iris4,col=species.name)
+```
+
+```{r}
+i1 <- which(species.name=='setosa')
+i2 <- which(species.name=='versicolor')
+i3 <- which(species.name=='virginica')
+n1 <- length(i1)
+n2 <- length(i2)
+n3 <- length(i3)
+n  <- n1+n2+n3
+
+g  <- length(levels(species.name))
+p  <- 4
+```
+
+How to perform a MANOVA test? instead of using the F-test, we will
+develop a test based on a "permutationalisation" of the Wilks[^1] test.
+Let's compute the permutational test statistic
+
+[^1]: I refer you to the textbook of Applied Statistics for info on this
+    statistic
+
+```{r}
+fit <- manova(as.matrix(iris4) ~ species.name)
+summary.manova(fit,test="Wilks") 
+T0 <- -summary.manova(fit,test="Wilks")$stats[1,2]
+T0
+```
+
+And let's now compute instead the permutational distribution of the test
+statistic.
+
+```{r}
+set.seed(seed)
+T_stat <- numeric(B)
+
+for(perm in 1:B){
+  # choose random permutation
+  permutation <- sample(1:n)
+  species.name.perm <- species.name[permutation]
+  fit.perm <- manova(as.matrix(iris4) ~ species.name.perm)
+  T_stat[perm] <- -summary.manova(fit.perm,test="Wilks")$stats[1,2]
+}
+```
+
+Let's visualize again the distribution, and the p-value
+
+```{r}
+hist(T_stat,xlim=range(c(T_stat,T0)),breaks=30)
+abline(v=T0,col=3,lwd=2)
+
+plot(ecdf(T_stat),xlim=c(-2,1))
+abline(v=T0,col=3,lwd=4)
+
+# p-value
+p_val <- sum(T_stat>=T0)/B
+p_val
+```
+
+
+## Permutational regression: continuous regressors
+
+### Simple regression
+
+We have now seen many applications of permutation testing to various real-world methodological issues... The last one is regression.
+In this case we will work with some simulated data: specifically data generated from a linear model with a **heavy-tailed error term** (we have seen in **Lab$03$** the effect of heavy tails of a distribution in the _t-test_).
+
+Here is a recap of the algorithm you have studied in the lectures.
+
+
+******
+**Algorithm 1**:  Permutation test algorithm for linear models
+
+******
+1.  Set $H_0$ (smaller model) and $H_1$ (more complex model). _E.g._, 
+$$
+H_1: y_i = \beta_0 + \beta_1 x_{i1} + \epsilon_i
+$$
+$$
+H_0: y_i = \beta_0 + \epsilon_i
+$$
+    where the residuals are of an unknown distibution, but we do assume they are i.i.d with $\mathbb{E}[\epsilon]=0$.
+2. Fit the  full model ($H_1$), and extract the value of test statistic (_e.g._, the $F$ statistic)
+3. Fit the reduced model ($H_0$ )to estimate the residuals, which are exchangeable under $H_0$. Extract as well the fitted values $\hat{y}_i$. 
+4. Run Conditional Monte Carlo simulation to estimate the permutational distribution of the statistic conditional on the sample. For example, we may have in the $k$ iteration, the $k$ permutational sample, and for each $i$:
+$$
+y_i^{(k)} = \hat{y}_i + \epsilon_i^{(k)}
+$$
+Where $\hat{y}_i$ is the fitted value of the reduced model in step ($2$) and $\epsilon_i^{(k)}$ a sample without replacement of the estimated residuals. With such dependent variable, we fit the full model ( _i.e._ the model under $H_1$) and extract $T^{(k)}$, the value of the test statistic in the $k$th iteration )
+
+5. Compare the value of the statistic in ($2$) with the permutational distribution estimated in ($4$) of $T^{(k)}, \; k \in \mathcal{K}$to yield the p-value.
+
+******
+
+
+```{r}
+set.seed(seed)
+# covariate values
+x1 <- runif(n,0,10)
+
+# generating model
+b0 <- 2
+b1 <- 3
+Y <- b0 + b1*x1 + stabledist::rstable(n,1.2,0)  # heavy tailed term
+```
+
+```{r}
+plot(x1,Y,pch=16)
+```
+
+```{r}
+# model under H_1
+result <- lm(Y ~ x1)
+summary(result)
+```
+
+One may ask: why use a nonparametric test?
+
+We test the residuals for normality
+```{r}
+shapiro.test(result$residuals)
+```
+
+**Exercise**: show through a DD plot there is no match between the distribution of th (estimated) residuals  and a normal one (more on this below).
+
+We proceed by applying **Algorithm 1**.
+
+$$
+H_0: y_i = \beta_0 + \epsilon_i \,\,\, versus \,\,\,\ H_1: y_1 = \beta_0 + \beta_1 x_i + \epsilon_i
+$$
+
+```{r}
+# observed test statistics
+T0.beta.sq <- (summary.lm(result)$coefficients[2,1])^2
+# in simple regression, same as R squared
+# T0.beta <- (summary.lm(result)$r.squared)
+
+
+T0.beta.std <- (summary.lm(result)$coefficients[2,1] /summary.lm(result)$coefficients[2,2] )^2
+# same as
+#  (summary.lm(result)$coefficients[2,3])^2
+```
+
+
+```{r}
+model.h0 <- lm(Y ~ 1)
+# MC estimation of the permutational distribution of the test statistics
+T.beta.sq <- numeric(B)
+T.beta.std <- numeric(B)
+
+set.seed(seed)
+for(perm in 1:B){
+  permutation <- sample(n)
+  Y.perm.glob <- model.h0$fitted.values + model.h0$residuals[permutation] 
+  # alternatively
+  # Y.perm.glob <- Y[permutation]
+  perm.fit <- lm(Y.perm.glob ~ x1)
+  T.beta.sq[perm] <- (summary.lm(perm.fit)$coefficients[2,3])^2
+}
+
+sum(T.beta.sq >= T0.beta.sq)/B
+sum(T.beta.std >= T0.beta.std)/B
+```
+
+
+### Multiple regression
+
+
+Now, we have more than one continuous regressor.
+
+```{r}
+# covariate values
+x1 <- runif(n,0,10)
+x2 <- (1:n)/5
+x3 <- rnorm(n,5,5)
+
+
+# generating model
+b0 <- 2
+b1 <- 3
+b2 <- -2
+b3 <- 0
+Y <- b0 + b1*x1 + b2*x2 + b3*x3 + stabledist::rstable(n,1.2,0)
+```
+
+Let's run some plots...
+
+```{r}
+plot(x1,Y,pch=16)
+plot(x2,Y,pch=16)
+plot(x3,Y,pch=16)
+```
+
+
+And of course due to the strong collinearity we see visually, we expect the test will be significat for at least one regressor.
+
+
+And, let's see how parametric inference behaves in this case (spoiler alert, badly. Homework: why?)^[If you clicked this footnote, perhaps you were looking for the solution. What was the main message of Lab$03$?]
+
+```{r}
+# parametric inference
+result <- lm(Y ~ x1 + x2 + x3)
+summary(result)
+```
+
+We notice that the hypothesis of the model do not hold, in fact we
+reject the normality of the residuals:
+
+```{r}
+shapiro.test(result$residuals)$p
+qqnorm(result$residuals)
+```
+
+How do I behave in this case, permutationally?
+
+Let's start with a **global test**.
+We have:
+$$
+H_0: \beta_1 = \beta_2 = \beta_3 = 0 ; \; \implies y = \beta_0 + \epsilon
+$$
+vs. 
+$$
+\; H_1: \exists \, l \in \{1, ..., L\}, \; s.t. \beta_l \neq0
+$$
+(in this exercise $L=3$).
+My test statistic is the $F$ statistic:
+$$
+T = \frac{SS_{reg}}{SS_{res}}
+$$
+You need not learn this formula by heart. What is important for you to know is that this statistic increases as the Sum of Squares of the reqression w.r.t the sum of squares of the residuals.
+
+An alternative could be the adjusted R-squared statistic (as we saw before you can extract from the summary it after fitting an $lm$ model), which measures the percentage of variability of the dependent variable explained by the model with an adjustment for degrees of freedom^[Again you just have to know it could be a good choice for this scenario. For further details I refer you again to the book of Applied statistics.]
+
+```{r}
+T0_glob <- summary(result)$f[1]
+T0_glob
+```
+
+The permutation scheme to use for the global model is basically, to **permute the responses**...
+Basically, if there was no model (i.e. my $H_0$, that every coefficient is 0), it wouldn't matter which input I'm giving, I should expect the same response (see the last lab for the computational proof). So permuting them wouldn't lead to a difference under the null hypothesis. Indeed, under $H_0$:
+
+
+```{r}
+T_H0glob <- numeric(B)
+
+for(perm in 1:B){
+  permutation <- sample(n)
+  
+  Y.perm.glob <- Y[permutation]
+  T_H0glob[perm] <- summary(lm(Y.perm.glob ~ x1 + x2 + x3))$f[1]
+}
+
+sum(T_H0glob>=T0_glob)/B
+```
+
+Ok, the model is significant, let's go ahead with the other tests...
+The three test statistics are the absolute value of their t_statistic normalised by their standard error:
+$$
+T_l = \bigg |\frac{\hat{\beta}_l}{SE_{\hat{\beta}_l}}\bigg|
+$$
+
+```{r}
+T0_x1 <- abs(summary(result)$coefficients[2,1]) # use coefficients[2,1] for the value
+T0_x1
+
+T0_x2 <- abs(summary(result)$coefficients[3,3])
+T0_x2
+
+T0_x3 <- abs(summary(result)$coefficients[4,3])
+T0_x3
+```
+
+And, let's compute the residuals under $H_0$ for the three hypotheses
+
+```{r}
+
+regr.H01 <- lm(Y ~ x2 + x3)
+residuals.H01 <- regr.H01$residuals
+
+regr.H02 <- lm(Y ~ x1 + x3)
+residuals.H02 <- regr.H02$residuals
+
+regr.H03 <- lm(Y ~ x1 + x2)
+residuals.H03 <- regr.H03$residuals
+```
+
+Now, let's compute the distribution
+
+```{r}
+ T_H01 <- T_H02 <- T_H03 <- numeric(B)
+
+for(perm in 1:B){
+  permutation <- sample(n)
+  
+  residuals.H01.perm <- residuals.H01[permutation]
+  Y.perm.H01 <- regr.H01$fitted + residuals.H01.perm
+  T_H01[perm] <- abs(summary(lm(Y.perm.H01 ~ x1 + x2 + x3))$coefficients[2,3])
+  
+  residuals.H02.perm <- residuals.H02[permutation]
+  Y.perm.H02 <- regr.H02$fitted + residuals.H02.perm
+  T_H02[perm] <- abs(summary(lm(Y.perm.H02 ~ x1 + x2 + x3))$coefficients[3,3])
+  
+  residuals.H03.perm <- residuals.H03[permutation]
+  Y.perm.H03 <- regr.H03$fitted + residuals.H03.perm
+  T_H03[perm] <- abs(summary(lm(Y.perm.H03 ~ x1 + x2 + x3))$coefficients[4,3])
+  
+}
+
+sum(T_H01>=T0_x1)/B
+sum(T_H02>=T0_x2)/B
+sum(T_H03>=T0_x3)/B
+```
+I know it seems rather complex because we have to fit the model under $H_1$ to obtain the value of the test statistic, and the model under $H_0$ to estimate residuals and fitted values. So I decided to write cleanly the algorithm to make it clearer.
+
+
+#### Parenthesis: a possible use of the DDplot
+
+In Lab $01$ we saw the Depth-Depth plot, which is a Nonparametric explorative visual tool to compare two populations. It is actually a nonparametric generalisation of the qqplot, however:
+* It also works with multivariate data
+* It uses depths that are computed w.r.t the available sample. So we do not compare the empirical depths (which replace the quantiles) with theoretical ones, but with the depths of another sample.
+
+The interpretation is the same as in the qqplot. If we see approximately a straight line, it means that both (empirical) distributions are similar.
+
+Thus, if we wanted to see the e.c.d.f. of the residuals w.r.t a normal one, we would have to build a DD-plot where one sample is the one of the residuals, and the other one of a normal distribution.
+
+(Note that to make them comparable, I sampled from a normal distribution with the same variance as the residuals, which is in turn estimated in the $lm$ object.)
+
+```{r}
+n <- length(result$residuals)
+set.seed(20)
+normal <- as.matrix(rnorm(n, sd=summary.lm(result)$sigma))
+
+DepthProc::ddPlot(x = as.matrix(normal), # use as.matrix since ddplot usually receives multivariate data
+                  y = as.matrix(as.matrix(result$residuals)),depth_params = list(method='Tukey'))
+```
+We notice that the points go far away from the $y=x$ line.
+Naturally, if we compared two samples from the same normal distribution, we would have a very high correlation in the depths:
+```{r}
+normal <- as.matrix(rnorm(n, 
+                          sd=summary.lm(result)$sigma)) 
+normal2 <- as.matrix(rnorm(n, 
+                          sd=summary.lm(result)$sigma))
+
+
+DepthProc::ddPlot(x = normal, y = normal2 ,depth_params = list(method='Tukey'))
+```
+And the conclusion we gather from such DD-plot is that the samples are indeed quite likely to be from the same distribution.
+
+
+## Independence test
+
+There is another permutation test we can perform.
+
+We have a sample of bivariate data $(\mathbf{x}, \mathbf{y}) \sim (X,Y)$.
+
+For simplicity, let us sample from a bivariate normal distribution
+
+```{r}
+SIGMA <-  diag(2)*2
+data <- MASS::mvrnorm(30, c(0,0), SIGMA)
+plot(data)
+```
+
+We test: 
+$$
+H_0: X \!\perp\!\!\!\perp Y \,\,\, versus \,\,\, H_1: X \not\!\perp\!\!\!\perp Y
+$$
+and the test statistic is the samples squared correlation coefficient.
+
+Under $H_0$, they are independent, so **within each vector**, we can permute the statistical units.
+
+```{r}
+
+T0 <- cor(data[,1], data[,2])^2
+n <- nrow(data)
+
+T0.perm.distrib <- numeric(B)
+
+for(perm in 1:B){
+  permutation.x <- sample(n)
+  permutaiton.y <- sample(n)
+  T0.perm.distrib[perm] <- cor(data[permutation.x,1], 
+                                 data[permutaiton.y,2])^2
+  }
+
+sum(T0.perm.distrib >=T0)/B
+
+```
+
+
+
+
+
+

@@ -103,7 +103,6 @@ degree of covariance between points.
 ```{r}
 P <- 101
 grid <-  seq( 0, 1, length.out =  P)
-  
 alpha <-  0.2
 beta <-  0.2
 
@@ -225,6 +224,9 @@ depths for a given `fdata` object:
 ```{r}
 band_depth <- BD(Data = univariate_fdata)
 modified_band_depth <- MBD(Data = univariate_fdata)
+
+univariate_fdata[which.max(modified_band_depth)]
+
 ```
 
 We can compute the median curve

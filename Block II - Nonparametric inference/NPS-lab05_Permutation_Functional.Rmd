@@ -1,0 +1,588 @@
+---
+title: "Lab 05 - Permutation tests for Functional Data"
+date: 2024-10-25
+author: "Nonparametric statistics AY 2024-2025"
+output:
+  html_document: 
+    df_print: paged
+    toc: true
+  pdf_document: default
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+library(rgl)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::knit_hooks$set(webgl = hook_webgl)
+```
+
+```{css, echo=FALSE}
+.extracode {
+background-color: lightblue;
+}
+```
+
+# Global Testing
+
+The Objective of this lab is to show you some applications of the advanced techniques you have seen during the course, applied to functional data. Namely we will see permutation testing (both global and local...).
+
+Let's load the packages we need and our data:
+
+```{r}
+library(fda)
+library(roahd)
+
+data=growth #data from the berkeley growth study...
+```
+
+And let's plot the curves...
+
+```{r}
+matplot(data$age,data$hgtm, type='l',col='blue',ylab="height",
+        main="Berkley Growth data set")
+matlines(data$age,data$hgtf, type='l',col='red')
+```
+
+
+What if I want to test if the two curves are equal or not? Nothing simpler.. I just need to remember how permutation tests work...
+
+## Permutation global test for equality of functional means
+
+```{r}
+seed=20
+B=1e3
+
+berkeley=rbind(t(data$hgtm),t(data$hgtf))
+n=nrow(berkeley)
+n_m=nrow(t(data$hgtm))
+n_f=nrow(t(data$hgtf))
+
+
+meandiff=(colMeans(t(data$hgtm))-colMeans(t(data$hgtf)))
+plot(meandiff,type = 'l', main="Mean difference function")
+T0=sum(meandiff^2)
+T0
+```
+
+And, Knowing that under $H_0$ the two groups of curves are i.i.d, my likelihood-invariant permutation scheme is of course label permutation, so...
+
+```{r}
+T0_perm=numeric(B)
+
+for(perm in 1:B){
+  permutation <- sample(n)
+  berkeley_perm=berkeley[permutation,]
+  perm_m = berkeley_perm[1:n_m,] 
+  perm_f = berkeley_perm[(n_m+1):n,] 
+  T0_perm[perm]=sum(((colMeans(perm_m)-colMeans(perm_f)))^2)
+}
+
+sum(T0_perm >= T0)/B
+hist(T0_perm,xlim = c(0,2000))
+abline(v=T0,col='green')
+
+```
+
+What would have happened instead, if I were to test inside a group?
+
+```{r}
+male1=berkeley[1:(n_m/2),]
+male2=berkeley[(n_m/2):n_m,]
+ber_m=rbind(male1,male2)
+
+T0=sum(((colMeans(male1)-colMeans(male2)))^2)
+T0
+
+T0_perm=numeric(B)
+
+for(perm in 1:B){
+  permutation <- sample(n_m)
+  berkeley_perm=ber_m[permutation,]
+  perm_m = berkeley_perm[1:(n_m/2),] 
+  perm_f = berkeley_perm[(n_m/2):n_m,] 
+  T0_perm[perm]=sum(((colMeans(perm_m)-colMeans(perm_f)))^2)
+}
+
+sum(T0_perm >= T0)/B
+hist(T0_perm)
+abline(v=T0,col='green')
+```
+
+Expectedly, I am not rejecting the null hypothesis (Pvalue of the test is very high...).
+
+## Permutation global test for equality of functional medians
+
+
+Of course, I can think about using different test statistics.
+
+To do so, though, I will need a slightly different technique to treat functional data, using the package `roahd`.
+
+
+```{r}
+hgtm_fd=fData(data$age,t(data$hgtm))
+hgtf_fd=fData(data$age,t(data$hgtf))
+
+meandiff=median_fData(hgtm_fd,type='MBD')-median_fData(hgtf_fd,type='MBD')
+plot(meandiff,type = 'l')
+T0=(sum(abs(meandiff$values)))
+T0
+```
+And now, the test
+
+```{r}
+berkeley_fd=append_fData(hgtm_fd,hgtf_fd)
+
+for(perm in 1:B){
+  permutation <- sample(n)
+  berkeley_perm=berkeley_fd[permutation,]
+  perm_m = berkeley_perm[1:n_m,] 
+  perm_f = berkeley_perm[(n_m+1):n,] 
+  meandiff=median_fData(perm_m,type='MBD')-median_fData(perm_f,type='MBD')
+  T0_perm[perm]=sum(abs(meandiff$values))
+}
+
+sum(T0_perm >= T0)/B
+hist(T0_perm,xlim = c(0,300))
+abline(v=T0,col='green')
+```
+
+## Permutation global test for equality of functional populations: other statistics
+
+* To compare two functional populations, Hotelling's $T^2$ statistic for functional data:
+
+```{r}
+library(fdahotelling)
+
+t <- test_twosample(
+  x = t(data$hgtm), 
+  y = t(data$hgtf), 
+  step_size = 0.01, 
+  B = 100L
+)
+t$statVal
+
+```
+
+#### Exercise: implement by yourselfa global test using this statistics.
+
+
+## Example: last year's January exam
+
+Before having a fallout with his (former) friend Dr. Marius, Dr. Sulla received from him a data set of smoothed functions for the observations `CO2_emissions` along time from $1990$ to $2010$, in an equally spaced grid of $100$ elements and only for `High income` and `Low income` countries. `ex3.rds` contains a list with the data frame and the time grid.
+
+1. By suitably defining a functional data object, plot the resulting curves for the $N = 57$ countries. Build a functional boxplot without adjusting the F value and report which countries are magnitude outliers.
+
+```{r}
+library(roahd)
+data3 <- readRDS(file="./data/ex3.rds")
+df.func<- data3$df3
+time <- data3$time
+f_data <- fData(time, df.func[, -c(1,2)])
+plot(f_data) # what happens if I do plot(data)?
+
+```
+
+
+```{r}
+fbp <- fbplot(f_data, main="Magnitude outliers",adjust = F)
+df.func[fbp$ID_outliers,c(1,2)]
+
+```
+
+
+
+3. Following the logic of the EKC, high and low income countries should produce different `C02_emissions`.To see whether this is verified in the C02_emissions measured along time, perform a global permutation test for the equality of both functional medians of both groups, using the $L2$ distance between them.
+You can approximate it with the euclidean distance of the discretely sampled curves.
+
+
+```{r}
+euclidean <- function(a, b) sqrt(sum((a - b)^2))
+mean.high <- apply(df.func[df.func$IncomeGroup=="High income", -c(1,2)], MARGIN=2, FUN=mean)
+mean.low <- apply(df.func[df.func$IncomeGroup=="Low income", -c(1,2)], MARGIN=2, FUN=mean)
+
+T0 <- euclidean(mean.high, mean.low)
+n <- dim(df.func)[1]
+B <- 1000
+Tperm <- numeric(B)
+set.seed(2024)
+for (b in 1:B){
+  perm <- sample(1:n, replace = F)
+  dfperm <- df.func
+  dfperm[, -c(1,2)] <- df.func[perm, -c(1,2)]
+  mean.high.perm <- apply(dfperm[dfperm$IncomeGroup=="High income", -c(1,2)], MARGIN=2, FUN=function(x){mean(x)})
+  mean.low.perm <- apply(dfperm[dfperm$IncomeGroup=="Low income", -c(1,2)], MARGIN=2, FUN=function(x){mean(x)})
+  Tperm[b] <- euclidean(mean.high.perm, mean.low.perm)
+}
+sum(Tperm>=T0)/B
+```
+
+
+* Bonus: what if we wanted a better approximation of the $L2$ distance?
+
+```{r}
+L2.distance <- function(f1, f2, grid){
+  
+  return( (pracma::trapz(x=grid, y=(f1-f2)**2) )**(1/2) )
+}
+
+mean.high <- apply(df.func[df.func$IncomeGroup=="High income", -c(1,2)], MARGIN=2, FUN=mean)
+mean.low <- apply(df.func[df.func$IncomeGroup=="Low income", -c(1,2)], MARGIN=2, FUN=mean)
+
+T0 <- L2.distance(f1=mean.high, f2=mean.low, grid=time)
+n <- dim(df.func)[1]
+B <- 1000
+Tperm <- numeric(B)
+set.seed(2024)
+for (b in 1:B){
+  perm <- sample(1:n, replace = F)
+  dfperm <- df.func
+  dfperm[, -c(1,2)] <- df.func[perm, -c(1,2)]
+  mean.high.perm <- apply(dfperm[dfperm$IncomeGroup=="High income", -c(1,2)], MARGIN=2, FUN=function(x){mean(x)})
+  mean.low.perm <- apply(dfperm[dfperm$IncomeGroup=="Low income", -c(1,2)], MARGIN=2, FUN=function(x){mean(x)})
+  Tperm[b] <-  L2.distance(f1=mean.high.perm, f2=mean.low.perm, grid=time)
+}
+
+hist(Tperm, xlim=c(0,50))
+abline(v=T0)
+sum(Tperm>=T0)/B
+```
+
+## Independence test
+
+Let us do an independence test between two functional data populations.
+
+We use the ECG data from `Lab02`.
+
+```{r}
+
+bivar.func.data <- as.mfData(list(mfD_healthy$fDList[[1]], mfD_healthy$fDList[[2]]))
+plot(bivar.func.data)
+
+```
+
+If you recall the first lectures, we can utilise Spearman's correlation coefficient for functional data: we compute ranks with the `Modified Hypograph Index`, then a correlation coefficient, yielding a test statistic.
+
+The permutational scheme is the same as the one we saw yesterday.
+
+```{r}
+MHI.first.func.dim <- MHI(bivar.func.data$fDList[[1]]) # modified hypograph index
+MHI.second.func.dim <- MHI(bivar.func.data$fDList[[2]])
+
+T0 <- cor_spearman(bivar.func.data, ordering='MHI')
+T0 <- cor(MHI.first.func.dim, MHI.second.func.dim)
+
+n <- bivar.func.data$fDList[[1]]$N
+# n <- bivar.func.data$fDList[[2]]$N
+
+T0.perm.distrib <- numeric(B)
+
+for(perm in 1:B){
+  permutation.x <- sample(n, replace=F)
+  permutaiton.y <- sample(n, replace=F)
+  T0.perm.distrib[perm] <- cor(MHI.first.func.dim[permutation.x], 
+                               as.numeric(MHI.second.func.dim)[permutaiton.y])**2
+  # alternative
+  #T0.perm.distrib[perm]  <- cor_spearman(as.mfData(list(mfD_healthy$fDList[[1]][permutation.x], 
+    #                          mfD_healthy$fDList[[2]][permutaiton.y])
+      #                   ), 
+      #         ordering="MHI")**2
+  
+  
+  }
+
+hist(T0.perm.distrib, xlim=c(0,.7))
+abline(v=T0)
+sum(T0.perm.distrib >=T0)/B
+
+
+```
+
+#### Exercise: implement an independence test for two multivariate populations.
+
+
+## An exercise: Functional Mann-Whitney
+
+In order to explore different tests, let us exploit further depth measures.
+
+Recall the Mann-Whitney U test: we have 
+$$
+H_0: X \stackrel{d}{=} Y \,\,\, vs. \,\,\, H_1: P[X>Y] \neq 0.5
+$$
+and we look at possible deviations towards $H_1$ using the ranks of data.
+
+**BUT** we have just computed ranks for Spearman's correlation coefficient for functional data...
+
+So all we need is a function that ranks our functional data.
+
+
+```{r}
+rank.func.data <- function(fdata){
+   return (
+     rank( MHI(fdata) ) 
+           )
+
+}
+```
+So we are done! We can paste Prof Vantini's code...
+
+We use the Berkley data set in this example.
+
+```{r,eval=T}
+func.data.bk <- fData(growth$age, t(cbind(growth$hgtm, growth$hgtf)) )
+n1 <- dim(growth$hgtm)[2]
+n2 <- dim(growth$hgtf)[2] 
+male.indices <- 1:n1
+female.indices <- 1:n2 + max(male.indices)
+plot(func.data.bk)
+```
+
+```{r}
+
+R <- rank.func.data(func.data.bk)
+R1 <- sum(R[male.indices])
+R2 <- sum(R[female.indices])
+
+U1 <- R1 - n1*(n1+1)/2  # Nr of wins of the 1st sample
+U2 <- R2 - n2*(n2+1)/2  # Nr of wins of the 2nd sample
+
+
+set.seed(24021979)
+B <- 100000
+U1.sim <- numeric(B)
+U2.sim <- numeric(B)
+n <- n1+n2
+for (k in 1:B)
+{
+  ranks.temp <- sample(1:n)
+  R1.temp <- sum(ranks.temp[1:n1])
+  R2.temp <- sum(ranks.temp[(n1+1):(n1+n2)])
+  U1.temp <- R1.temp - n1*(n1+1)/2
+  U2.temp <- R2.temp - n2*(n2+1)/2
+  U1.sim[k] <- U1.temp
+  U2.sim[k] <- U2.temp
+}
+
+hist(U1.sim, breaks = 50)
+abline(v = c(U1, U2), col='red')
+abline(v = n1*n2/2, lwd=3)
+
+hist(U2.sim, breaks = 50)
+abline(v = c(U1, U2), col='red')
+abline(v = n1*n2/2, lwd=3)
+
+U.star <- max(U1, U2)
+abline(v=U.star)
+
+p.value <- 2 * sum(U1.sim >= U.star)/B
+p.value
+
+```
+
+
+
+# Local testing
+
+
+Now, what I am doing here is basically is testing the hypothesis globally, I am rejecting if, for at least one time instant $t$ the two curves are statistically different. How do I tell what is that specific time instant? I use a procedure called Interval-wise Testing.
+
+## A first look: the p-value function
+
+2. Provide the (point-wise) mean of each group. Add them the last plot. Calculate the pointwise p-value of the permutation test using as test statistic the (absolute) difference of the means and interpret your results.
+
+We firstly recover the plot
+```{r}
+plot(f_data[-fbp$ID_outliers]) 
+mean.high <- apply(df.func[df.func$IncomeGroup=="High income", -c(1,2)], MARGIN=2, FUN=function(x){mean(x)})
+lines(time, mean.high,col="black")
+mean.low <- apply(df.func[df.func$IncomeGroup=="Low income", -c(1,2)], MARGIN=2, FUN=function(x){mean(x)})
+lines(time, mean.low,col="black")
+```
+
+And now perform the point-wise test. This means we have a family of hypothesis tests:
+
+$$
+H_{0,s} = X(s) = Y(s)\; vs. \; H_{1,s} : X(s) \neq Y(s); \; s \in \mathcal{S}
+$$
+where again $X(s)$.
+
+By fixing $s$, we have a typical univariate permutation test for two populations. So let us compute with the same loop all the different p-values of the different tests (one for each $s \in \mathcal{S}$)
+
+W compute the point-wise test statistic:
+$$
+T(s) = |\hat{\mu}_X(s) - \hat{\mu}_Y(s) |\; \forall s \in \mathcal{S}
+$$
+where $\hat{\mu}(s)$ is the sample mean at $s$.
+
+
+1. Estimate permutational distribution of the test statistic at each $s$
+2. Compute p-value of every test $s \in \mathcal{S}$
+
+```{r}
+
+uniperm=function(tindex,B=100){
+  data <- df.func[, c(2,tindex+2)]
+  n <- dim(data)[1]
+  Tperm <- numeric(B)
+  mean.high.pw <- mean(data[data$IncomeGroup=="High income", -1])  
+  mean.low.pw <- mean(data[data$IncomeGroup=="Low income", -1])
+  t0 <- sqrt((mean.high.pw- mean.low.pw)**2)
+
+  for(index in 1:B){
+    perm <- sample(1:n, replace = F)
+    dfperm <- data
+    dfperm[, -1] <- data[perm, -1]
+    mean.high.perm <- mean(dfperm[dfperm$IncomeGroup=="High income", -1])
+    mean.low.perm <- mean(dfperm[dfperm$IncomeGroup=="Low income", -1])
+  Tperm[index] <- sqrt((mean.high.perm - mean.low.perm)**2)
+  }
+  return(sum(Tperm>=t0)/B)
+}
+
+pval.fun=numeric(length(time))
+for(index in 1:length(time)){
+  set.seed(2024)
+  pval.fun[index]=uniperm(index)
+}
+
+plot(time, pval.fun, ylim=c(0,1))
+```
+
+
+## Interval-wise tests for functional data: the adjusted p-value function
+
+
+
+For this section of the lab, we will use the following data set:
+
+```{r}
+library(fdatest)
+data(NASAtemp)
+
+matplot(1:365,t(NASAtemp$milan), type='l',col='blue',ylab="temperature", xlab="day of year",
+        main="NASA temperature")
+matlines(1:365,t(NASAtemp$paris), type='l',col='red')
+
+```
+
+How is Interval-Wise testing implemented?
+
+
+**Details on the implementation**.
+
+_As all FDA techniques, the procedure to evaluate the unadjusted and adjusted p-value functions and select the significant intervals of the domain described in Section 2 has to be numerically approximated to deal with the analysis of real data._ (cf. [the article](https://re.public.polimi.it/bitstream/11311/1022750/4/11311-1022750_Vantini.pdf))
+
+
+* _Step 1_ : **smoothing**.
+
+We need to be able to evaluate on a sufficiently fine grid, so firstly we smooth the functional data. You will see more on nonparametric regression... although for `fda` you could do something like this
+
+* _Step 2_: pointwise p-value function:
+
+depending on the test, whether it is two populations, location or regression, the point-wise p-value function is computed, just as before.
+
+* _Step 3_ interval-wise p-value function
+
+The maximum of the estimated p-value function is taken over intervals for the interval-wise error rate control.
+
+### IWT test for location
+
+We have a functional data set, and he hypothesise if a function $m(t)$ is the true location of functional population..
+
+Let us try with a constant function: $m(t)=4$.
+
+```{r, eval=F}
+
+# Performing the ITP for two populations with the B-spline basis
+ITP.result <- ITP1bspline(NASAtemp$paris,mu=4,nknots=50,B=1000)
+
+# Plotting the results of the ITP
+plot(ITP.result,xrange=c(0,12),main='Paris temperatures')
+# Plotting the p-value heatmap
+ITPimage(ITP.result,abscissa.range=c(0,12))
+# Selecting the significant components for the radius at 5% level
+which(ITP.result$corrected.pval < 0.05)
+
+```
+
+This technique allows you to perform a two sample t-test AND to impute a rejection of the null to some parts of the domain. 
+
+The philosophy is similar to the one of post-hoc tests, but instead of checking components, I am checking intervals of the domain of the functional datum,
+
+
+### IWT test for two populations
+
+We know compare Paris and Milan. Let us now use a Fourier basis for the smoothing.
+
+```{r}
+# Performing the ITP
+ITP.result <- ITP2fourier(NASAtemp$milan,
+                          NASAtemp$paris,maxfrequency=20,B=1000,
+                          paired=TRUE  # you answer: why?
+                          )
+
+# Plotting the results of the ITP
+plot(ITP.result,main='NASA data',xrange=c(1,365),xlab='Day')
+# Plotting the p-value heatmap
+ITPimage(ITP.result,abscissa.range=c(1,365))
+# Selecting the significant coefficients
+which(ITP.result$corrected.pval < 0.05)
+```
+
+
+### IWT ANOVA
+
+
+We can also plot the ANOV.
+
+Remember to choose method `"responses"`: this implementes the permutations of the groups.
+
+```{r}
+temperature <- rbind(NASAtemp$milan,NASAtemp$paris)
+groups <- c(rep(0,22),rep(1,22))
+# Performing the ITP
+ITP.result <- ITPaovbspline(temperature ~ groups,
+                            B=1000,nknots=20,order=3,
+                            method="responses")
+# Summary of the ITP results
+summary(ITP.result)
+# Plot of the ITP results
+plot(ITP.result)
+# All graphics on the same device
+plot(ITP.result,
+     main='NASA data', plot.adjpval = TRUE,xlab='Day',xrange=c(1,365)
+)
+
+
+```
+
+### IWT for functional regression
+
+
+ The function implements the Interval Testing Procedure for testing the
+significance of the effects of scalar covariates on a functional population evaluated on a uniform grid.
+
+That is, the response is functional; and the regressor is a scalar (either continuous or categorical)
+
+
+```{r}
+# Performing the ITP
+ITP.result <- ITPlmbspline(temperature ~ groups,B=1000,nknots=20)
+# Summary of the ITP results
+summary(ITP.result)
+# Plot of the ITP result
+plot(ITP.result,main='NASA data', plot.adjpval = TRUE,xlab='Day',xrange=c(1,365))
+# All graphics on the same device
+plot(ITP.result,main='NASA data', plot.adjpval = TRUE,xlab='Day',xrange=c(1,365))
+
+```
+
+
+### Further examples
+
+You also saw in class an example about climate change: [this](https://arxiv.org/pdf/2306.07738) is the paper, and [here](https://github.com/NoeDebrois/NPS-Project-2023-2024) you can find an implementation students from last year did. 
+
+
