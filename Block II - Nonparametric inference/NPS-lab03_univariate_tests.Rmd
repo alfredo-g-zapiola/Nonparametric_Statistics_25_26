@@ -1,6 +1,6 @@
 ---
 title: "Lab 03 - Parametric and Nonparametric Univariate Tests"
-date: 2024-09-26
+date: 2025-10-09
 author: "Nonparametric statistics ay 2025/2026"
 output:
   
@@ -53,6 +53,8 @@ distributions. In other words, let $Y_1$ and $Y_2$ be two **independent random v
 and the statistical hypothesis I want to test is
 $H_0: Y_1\stackrel{d}{=}Y_2$ vs $H_1: Y_1 \stackrel{d}{\neq} Y_2$.
 
+
+Recall that, if $H_0$ is true, the Type-I error level ($\alpha$) is the **percentage of times I reject $H_0$ even if it is true**, if I keep as significance $\alpha$. This should be valid $\forall \alpha \in (0,1)$, although in practice we choose values such as $\alpha \in \{0.01, 0.05, 0.1\}$.
 
 ### Empirical assesment of Type-I (false positive) error
 
@@ -184,8 +186,12 @@ p.value <- numeric(B)
 set.seed(seed)
 for(j in 1:B)
 {
-  x.1 <- rt(n,1)
-  x.2 <- rt(n,1)
+  campione = rt(2*n, 1)
+  x.1 = campione[1:n]
+  x.2 = campione[-(1:n)]
+  #x.1 <- rt(n,1)
+  #x.2 <- rt(n,1)
+  
   p.value[j] <- t.test(x.1,y=x.2)$p.value
   #pb$tick()
 }
@@ -329,7 +335,7 @@ see though how nonparametric tests behave.
 ### Exploiting Nonparametric tests
 
 Let's see what's going on with Mann-Whitney U test.
-Recall that we have, for two independent random samples $X$ _et_ $Y$.
+Recall that we have, for two independent random samples $X_i, i = 1, ..., N_x$ _et_ $Y_j, j = 1, \ldots, N_j $.
 $$
 H_0: X \stackrel{d}{=}Y \;\; versus \;\; H_1: \mathbb{P}[X>Y] \neq 0.5
 $$
@@ -380,7 +386,7 @@ so we need to "weaponise" his code, putting it into a function that we
 can call when we need it.
 
 Before looking at the code, let us recall the setting. We want to test is
-$H_0: Y_1\stackrel{d}{=}Y_2$ vs $H_1: Y_1 \stackrel{d}{\neq} Y_2$. For this, we have two samples:. Following Prof. Vantini's notation: $X_p$ is an observed pooled sample. 
+$H_0: Y_1\stackrel{d}{=}Y_2$ vs $H_1: Y_1 \stackrel{d}{\neq} Y_2$. For this, we have two sample:. Following Prof. Vantini's notation: $\mathcal{X}_p$ is an observed pooled sample. 
 
 To test this, we use a statistic $T_0$ (in this case $|\bar{x}_1-\bar{x}_1|$) conditional on the fact the observed pooled sample is $X_p$. Id est, we look at the distribution of
 $$
@@ -449,8 +455,7 @@ case) and the empirical type-I error is fine.
 
 ## Assessment Empirical Level of Type-II error
 
-Recall: type II error means not seeing something (deem $H_0$ true) that is actually there ($H_1$ is true). Its counterpart is the power of the test, i.e. its ability
-to detect $H_1$ when it is true.
+Recall: type II error $\beta$ means not seeing something (deem $H_0$ true) that is actually there ($H_1$ is true). Its counterpart is the power of the test $1-\beta$, i.e. percentage of the times we $H_1$ when it is true.
 
 How do I compare "valid" (i.e. tests where the theoretical type-I error
 is equal to the empirical one?) via the Type-II error, or the
@@ -736,13 +741,15 @@ We finally plot:
 plot(delta_grid,power_t,ylim=c(0,1), main='Power, uniform case',type='l')
 lines(delta_grid,power_perm_1,col='red')
 ```
+
+
 And observe that indeed the permutation test is more powerful!
 
 
 
 ## Two-sample paired / one sample nonparametric test
 
-Let us change the setting. We have made the empirical assessments of coverage (type-I error) and power ($1 -$ type II error) for tests for two independent samples. What about the other cases? We may have a sample of a univariate distribution, or paired observations. To elaborate on this, we load the dataset of last year's February exam:
+Let us change the setting. We have made the empirical assessments of coverage (type-I error $\alpha$) and power ($1-$ type II error $\beta$) for tests for two independent samples. What about the other cases? We may have a sample of a univariate distribution, or paired observations. To elaborate on this, we load the dataset of last year's February exam:
 
 ```{r}
 data <- readRDS(file="./data/feb2024.rds")
@@ -776,7 +783,7 @@ $$
 H_1 = \{ \mathbb{P} [X_{floréal} > 100] \neq 0.5 \}
 $$
 since data are univariate and i.i.d, we can apply a sign test. The test statistic is going to be:
-$$w* := max(w, N-w)$$
+$$w^* := max(w, N-w)$$
 where 
 $$
 w := \sum_{i=1}^{N} \mathbb{I}_{\{x_i > 100 \}}
@@ -789,7 +796,7 @@ Assumptions:
 * Under H0, the test statistic has the following property:
 
 $$
-w* \stackrel{H_0}{\sim} Binomial(N, 0.5)
+  w^* \stackrel{H_0}{\sim} Binomial(N, 0.5)
 $$
 
 ```{r}
@@ -847,18 +854,18 @@ The p-value is practically zero (which is coherent with the fact the value we ob
 
 What if we were interested in the $90$th quantile ($q_{90}$) of $X_{floréal}$? As mentioned in class, we can still use the sign test. We try with $q_{90}=105$:
 $$
-H_0 = \{ \mathbb{P}[X_{floréal} > 105]  = 0.9 \}
+H_0 = \{ \mathbb{P}[X_{floréal} \leq 105]  = 0.9 \}
 $$
 _versus_
 $$
-H_1 = \{ \mathbb{P} [X_{floréal} > 105] \neq 0.9 \}
+H_1 = \{ \mathbb{P} [X_{floréal} \leq 105] \neq 0.9 \}
 $$
 since data are univariate and i.i.d, we can apply a sign test. 
 
 Having that:
+
 $$
 (N-w) \stackrel{H_0}{\sim} Binomial(N, .90)
-
 $$
 
 ```{r}
@@ -1009,6 +1016,8 @@ for(j in 1:B){
 }
 hist(p.value)
 ```
+
+
 and indeed we get the expected uniform distribution for a test repeated $B$ times with the null being true. 
 
 
