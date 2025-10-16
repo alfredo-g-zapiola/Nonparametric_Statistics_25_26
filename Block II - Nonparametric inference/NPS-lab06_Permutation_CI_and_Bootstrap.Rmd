@@ -1,7 +1,7 @@
 ---
 title: "Lab 06 - Permutational CIs and the Bootstrap"
 author: "Nonparametric Statistics A.Y. 2025-2026"
-date: 2024-10-21
+date: 2025-10-21
 output:
   html_document: 
     df_print: paged
@@ -131,7 +131,7 @@ perm_wrapper <- function(grid_point) {
   uni_t_perm(data, grid_point, B = 2000)  # run a permutational t test where the hypothesised mean is the grid_point
 }
 
-pval_function <- pbsapply(grid, perm_wrapper, cl=cl) # TODO
+pval_function <- pbsapply(grid, perm_wrapper)#, cl=cl)
 ```
 
 ```{r}
@@ -293,6 +293,8 @@ Let's start by loading and displaying some data, regarding the growth of some or
 
 ```{r}
 rm(list=ls())
+B <- 1e3
+seed = 20
 data("Orange")
 Orange
 ```
