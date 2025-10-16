@@ -335,7 +335,10 @@ see though how nonparametric tests behave.
 ### Exploiting Nonparametric tests
 
 Let's see what's going on with Mann-Whitney U test.
-Recall that we have, for two independent random samples $X_i, i = 1, ..., N_x$ _et_ $Y_j, j = 1, \ldots, N_j $.
+Recall that we have, for two independent random samples 
+
+$$X_i, i = 1, ..., N_x$ _et_ $Y_j, j = 1, \ldots, N_j $$
+
 $$
 H_0: X \stackrel{d}{=}Y \;\; versus \;\; H_1: \mathbb{P}[X>Y] \neq 0.5
 $$

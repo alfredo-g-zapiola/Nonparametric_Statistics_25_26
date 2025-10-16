@@ -61,6 +61,7 @@ $$
 Let's start by reading and rearranging the data.
 
 ```{r}
+
 # set header = TRUE read the first row in the csv as colnames.
 # for every day, we will have observations corresponding to every half hour
 d1 = read.csv('./data/areac_data/accessi-orari-areac-2016-09-12-00_00_00.csv', header=T)

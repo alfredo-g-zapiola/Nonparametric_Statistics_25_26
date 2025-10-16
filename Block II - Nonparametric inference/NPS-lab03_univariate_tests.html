@@ -1941,10 +1941,14 @@ nonparametric tests behave.</p>
 <div id="exploiting-nonparametric-tests" class="section level3">
 <h3>Exploiting Nonparametric tests</h3>
 <p>Let’s see what’s going on with Mann-Whitney U test. Recall that we
-have, for two independent random samples <span class="math inline">\(X_i, i = 1, ..., N_x\)</span> <em>et</em> $Y_j, j
-= 1, , N_j <span class="math inline">\(.\)</span>$ H_0: X Y ;; versus ;;
-H_1: [X&gt;Y] $$ Counterintutively, we perform such test with the use of
-the <code>wilcox.test</code> function, setting the <code>paired</code>
+have, for two independent random samples</p>
+<p><span class="math display">\[X_i, i = 1, ..., N_x$ _et_ $Y_j, j = 1,
+\ldots, N_j \]</span></p>
+<p><span class="math display">\[
+H_0: X \stackrel{d}{=}Y \;\; versus \;\; H_1: \mathbb{P}[X&gt;Y] \neq
+0.5
+\]</span> Counterintutively, we perform such test with the use of the
+<code>wilcox.test</code> function, setting the <code>paired</code>
 argument as <code>FALSE</code>, and filling arguments <code>x</code> and
 <code>y</code> with the respective samples</p>
 <p>For the one sample signed-rank test, we run <code>wilcox.test</code>
