@@ -576,8 +576,7 @@ ITP.result <- ITPlmbspline(temperature ~ groups,B=1000,nknots=20)
 summary(ITP.result)
 # Plot of the ITP result
 plot(ITP.result,main='NASA data', plot.adjpval = TRUE,xlab='Day',xrange=c(1,365))
-# All graphics on the same device
-plot(ITP.result,main='NASA data', plot.adjpval = TRUE,xlab='Day',xrange=c(1,365))
+
 
 ```
 

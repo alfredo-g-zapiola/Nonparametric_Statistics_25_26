@@ -101,7 +101,8 @@ matplot(seq(0,47)/2,
         main="Sample multivariate means")
 ```
 
-Let's compute the test statistic $T_0 =||\bar{\mathbf{x}}_1 -\bar{\mathbf{x}}_2||_2^2 =(\bar{\mathbf{x}}_1-\bar{\mathbf{x}}_2)^\intercal(\bar{\mathbf{x}}_1-\bar{\mathbf{x}}_2) $ where $||.||_2$ denotes the euclidean norm in $\mathbb{R}^{48}$.
+Let's compute the test statistic 
+$$T_0 =||\bar{\mathbf{x}}_1 -\bar{\mathbf{x}}_2||_2^2 =(\bar{\mathbf{x}}_1-\bar{\mathbf{x}}_2)^\intercal(\bar{\mathbf{x}}_1-\bar{\mathbf{x}}_2) $$ where $||.||_2$ denotes the euclidean norm in $\mathbb{R}^{48}$.
 
 ```{r}
 n1 = dim(t1)[1]
@@ -876,7 +877,7 @@ To test $H_0:\beta=0$ vs $H_1:\beta\neq 0$, I am assuming under $H_0$
 the following model $Km = \mu + \alpha_i + \epsilon$, while for
 $H_0:\alpha=0$ vs $H_1:\alpha\neq0$  I am assuming
 $Km = \mu + \beta_j + \epsilon$ under $H_0$. That is, in the next code
-blocks I will perform **two separate tests\**.
+blocks I will perform **two separate tests**.
 
 Again, the idea is to permute the residuals under $H_0$, so let's
 compute them.
