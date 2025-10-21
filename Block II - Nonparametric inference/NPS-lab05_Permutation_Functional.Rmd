@@ -495,7 +495,7 @@ We have a functional data set, and he hypothesise if a function $m(t)$ is the tr
 
 Let us try with a constant function: $m(t)=4$.
 
-```{r, eval=F}
+```{r, eval=T}
 
 # Performing the ITP for two populations with the B-spline basis
 ITP.result <- ITP1bspline(NASAtemp$paris,mu=4,nknots=50,B=1000)
@@ -513,25 +513,6 @@ This technique allows you to perform a two sample t-test AND to impute a rejecti
 
 The philosophy is similar to the one of post-hoc tests, but instead of checking components, I am checking intervals of the domain of the functional datum,
 
-
-### IWT test for two populations
-
-We know compare Paris and Milan. Let us now use a Fourier basis for the smoothing.
-
-```{r}
-# Performing the ITP
-ITP.result <- ITP2fourier(NASAtemp$milan,
-                          NASAtemp$paris,maxfrequency=20,B=1000,
-                          paired=TRUE  # you answer: why?
-                          )
-
-# Plotting the results of the ITP
-plot(ITP.result,main='NASA data',xrange=c(1,365),xlab='Day')
-# Plotting the p-value heatmap
-ITPimage(ITP.result,abscissa.range=c(1,365))
-# Selecting the significant coefficients
-which(ITP.result$corrected.pval < 0.05)
-```
 
 
 ### IWT ANOVA
