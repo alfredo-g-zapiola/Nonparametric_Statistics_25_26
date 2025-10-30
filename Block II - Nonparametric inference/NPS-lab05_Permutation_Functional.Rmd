@@ -498,7 +498,8 @@ Let us try with a constant function: $m(t)=4$.
 ```{r, eval=T}
 
 # Performing the ITP for two populations with the B-spline basis
-ITP.result <- ITP1bspline(NASAtemp$paris,mu=4,nknots=50,B=1000)
+ITP.result <- ITP1bspline(NASAtemp$paris,mu=4 ,
+                          nknots=50,B=1000)
 
 # Plotting the results of the ITP
 plot(ITP.result,xrange=c(0,12),main='Paris temperatures')
@@ -524,10 +525,10 @@ Remember to choose method `"responses"`: this implementes the permutations of th
 
 ```{r}
 temperature <- rbind(NASAtemp$milan,NASAtemp$paris)
-groups <- c(rep(0,22),rep(1,22))
+groups <- as.factor(c(rep("milan",22),rep("paris",22)))
 # Performing the ITP
 ITP.result <- ITPaovbspline(temperature ~ groups,
-                            B=1000,nknots=20,order=3,
+                            B=100,nknots=20,order=3,
                             method="responses")
 # Summary of the ITP results
 summary(ITP.result)

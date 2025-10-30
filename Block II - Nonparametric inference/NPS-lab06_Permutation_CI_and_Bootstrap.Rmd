@@ -131,7 +131,7 @@ perm_wrapper <- function(grid_point) {
   uni_t_perm(data, grid_point, B = 2000)  # run a permutational t test where the hypothesised mean is the grid_point
 }
 
-pval_function <- pbsapply(grid, perm_wrapper)#, cl=cl)
+pval_function <- pbsapply(grid, perm_wrapper, cl=cl)
 ```
 
 ```{r}
@@ -270,14 +270,14 @@ CI_calc=function(alpha_level){
 which I then iterate using lapply
 
 ```{r}
-CI_list=pblapply(alpha_grid,CI_calc)
+CI_list=pbsapply(alpha_grid,CI_calc)
 CI_mat=dplyr::bind_rows(CI_list)
 ```
 
 And, I can now check if $0$ is contained in the CI... The values are sorted, so the first one that does not contain $0$ is the first one of the vector...
 
 ```{r}
-check=CI_mat[,1]>0 | CI_mat[,2]<0
+check= CI_mat[,1]>0 | CI_mat[,2]<0
 (alpha_grid[check])[1]
 ```
 
