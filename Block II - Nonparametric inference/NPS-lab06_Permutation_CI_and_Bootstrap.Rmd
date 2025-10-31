@@ -1017,7 +1017,6 @@ p_val
 ```
 
 
-The P-value is way above the selected confidence level ($\alpha = 0.05$), I can thus not refuse $H_0$, and argue that the beehives of Dr. Bisacciny do not perform differently than the golden standard $c_0$
 
 ## Exercise 3 (a bit harder)
 
