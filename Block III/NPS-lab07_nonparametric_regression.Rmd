@@ -1,6 +1,6 @@
 ---
 title: "Lab 07 - Nonparametric Regression"
-date: 2025-10-030
+  date: 2025-10-30
 author: "Nonparametric statistics AY 2025/2026"
 output:
   html_document: 
@@ -11,13 +11,13 @@ output:
   markdown: 
     wrap: 72
 ---
-
+        
 # Part 1: Global estimates
 
 ```{r setup, include=FALSE}
 library(rgl)
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_chunk$set(cache = TRUE)
+    knitr::opts_chunk$set(cache = TRUE)
 knitr::knit_hooks$set(webgl = hook_webgl)
 knitr::include_graphics(path="linear_regression_formulae.png")
 ggplot2::theme_set(ggplot2::theme_bw())
@@ -56,13 +56,13 @@ some kind of reverse bathtub behavior. What happens if I try to model it
 linearly?
 
 ```{r}
-m_linear=lm(wage ~ 1 + age)
+m_linear=lm(wage ~ 1 + age, data=Wage)
 summary(m_linear)
 
 age.grid=seq(range(age)[1],range(age)[2],by=0.5)
 # alternative age.grid <- seq(min(age), max(age), length.out=100)
-preds=predict(m_linear,list(age=age.grid),se=T)
-se.bands=cbind(preds$fit +2* preds$se.fit ,preds$fit -2* preds$se.fit)
+preds = predict(m_linear, newdata=list(age=age.grid), se=T)
+se.bands=cbind(preds$fit +2* preds$se.fit ,preds$fit - 2* preds$se.fit)
 plot(age ,wage ,xlim=range(age.grid) ,cex =.5, col =" darkgrey ",main='Linear Fit')
 lines(age.grid,preds$fit ,lwd =2, col =" blue")
 matlines (age.grid ,se.bands ,lwd =1, col =" blue",lty =3)
@@ -96,7 +96,7 @@ employ polynomial functions. Let us try to add terms to the standard
 linear model:
 
 ```{r}
-m_quad=lm(wage ~ age + I(age^2))
+m_quad=lm(wage ~ 1+ age + I(age^2))
 summary(m_quad)
 preds=predict(m_quad,list(age=age.grid),se=T)
 
@@ -113,6 +113,10 @@ tip):
 ```{r}
 m_list=lapply(1:10,function(degree){lm(wage ~ poly(age,degree=degree))})
 do.call(anova,m_list)
+
+for (i in 1:10){
+  l = lm(wage ~ poly(age,degree=degree))
+}
 ```
 
 I would get the very same results with non-orthogonal polynomials
@@ -284,14 +288,15 @@ Cutpoint maybe around $10000$? How do we do that?
 head(Prestige$income)
 attach(Prestige)
 head(
-       cut(income, breaks = c(min(income),10000,max(income))))
+       cut(income, breaks = c(min(income), 5000, 10000,max(income)))
+       )
 detach(Prestige)
 ```
 
 Then it boils down to fit an lm with this new variable
 
 ```{r}
-m_cut=lm(prestige ~ cut(income,breaks = c(-Inf,10000,max(income))), data=Prestige)
+m_cut= lm(prestige ~ 1 + cut(income,breaks = c(-Inf,10000,max(income))), data=Prestige)
 broom::tidy(summary(m_cut)) %>% 
   dplyr::mutate(term=ifelse(term=="(Intercept)",term, "income_cut(1e+04,2.59e+04]")) # all this mess to have a nice name on the summary table
 
@@ -659,11 +664,11 @@ $$
 
 ```{r}
 cutoff <- 10000
-Prestige$income_cut <- Prestige$income>cutoff
+Prestige$income_cut <- (Prestige$income>cutoff)
 
 Prestige$income_cut_model <- (Prestige$income - cutoff)*Prestige$income_cut
 
-model_cut_disc=lm(prestige ~ income + income_cut_model + I(income>cutoff), data=Prestige)
+model_cut_disc=lm(prestige ~ 1 + income + income_cut_model + I(income>cutoff), data=Prestige)
 # model_cut_disc=lm(prestige ~ 1 + income + income_cut_model + I(income>cutoff), data=Prestige) equivalent
 
 model_cut_disc_alt =lm(prestige ~ 1+ income * income_cut, data=Prestige) # equivalent formulation
@@ -710,7 +715,7 @@ can force the regression line to be continuous by dropping the
 a degree of freedom:
 
 ```{r}
-model_cut=lm(prestige ~ income + income_cut_model, data=Prestige)
+model_cut=lm(prestige ~ 1 + income + income_cut_model, data=Prestige)
 preds_cut=predict(model_cut,new_data ,se=T)
 se.bands_cut=cbind(preds_cut$fit +2* preds_cut$se.fit ,preds_cut$fit -2* preds_cut$se.fit)
 with(Prestige, plot(income ,prestige ,xlim=range(new_data$income) ,cex =.5, col =" darkgrey " ))

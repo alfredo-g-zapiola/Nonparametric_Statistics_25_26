@@ -131,7 +131,7 @@ perm_wrapper <- function(grid_point) {
   uni_t_perm(data, grid_point, B = 2000)  # run a permutational t test where the hypothesised mean is the grid_point
 }
 
-pval_function <- pbsapply(grid, perm_wrapper, cl=cl)
+pval_function <- pbsapply(grid, perm_wrapper)#, cl=cl)
 ```
 
 ```{r}
@@ -194,7 +194,7 @@ T.obs
 
 Now, we need to compute the bootstrap distribution of the sample median. To do this I will show you an advanced (and parallel...) technique. Let's set up the cluster
 
-```{r}
+```{r,eval=FALSE}
 cl=parallel::makeCluster(parallel::detectCores()/2)
 parallel::clusterExport(cl=cl,list('x1'))
 
@@ -205,8 +205,8 @@ And now, let's directly compute
 
 ```{r}
 T.boot=pbreplicate(B,  
-                   median(sample(x1, replace = T)),
-                   cl=cl)
+                   median(sample(x1, replace = T)))
+                   #,cl=cl)
 ```
 
 Again, let's observe the distribution
@@ -270,7 +270,7 @@ CI_calc=function(alpha_level){
 which I then iterate using lapply
 
 ```{r}
-CI_list=pbsapply(alpha_grid,CI_calc)
+CI_list = lapply(alpha_grid,CI_calc)
 CI_mat=dplyr::bind_rows(CI_list)
 ```
 
@@ -974,7 +974,7 @@ beehive_median = depthMedian(beehive,depth_params = list(method='Tukey'))
 n <- dim(beehive)[1]
 p <- dim(beehive)[2]
 
-T20 <- Tukey_median
+T20 <- (Tukey_median-c_0)  %*% (Tukey_median-c_0) 
 
 # Estimating the permutational distribution under H0
 B <- 1000
@@ -1301,7 +1301,7 @@ let's render the data usable for analysis, namely let's convert the athlete in a
 chrono$athlete=factor(chrono$athlete)
 summary(chrono)
 attach(chrono)
-boxplot(reaction_time ~ athlete)
+boxplot(chrono$reaction_time ~ chrono$athlete)
 ```
 
 Athlete 3 seems better than the others.
@@ -1449,7 +1449,7 @@ clusterExport(cl,varlist=list("ath_3","uni_t_perm"))
 mean(ath_3)
 
 perm_wrapper=function(grid_point){uni_t_perm(ath_3,grid_point)}
-pval_function=pbsapply(grid,perm_wrapper,cl=cl)
+pval_function=pbsapply(grid,perm_wrapper)#,cl=cl)
 
 plot(grid,pval_function,type='l')
 
