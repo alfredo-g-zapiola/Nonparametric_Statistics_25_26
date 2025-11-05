@@ -617,12 +617,14 @@ fit_lm <- lm(log(surv.time)~location,data = bee)
 ```{r}
 sum(fit_lm$coefficients)
 mean(log(bee$surv.time[bee$location=="Milan"])) # alternatively
+predict(fit_lm, newdata=list(location="Milan"))# location="Jovencan"
 ```
 
 
  Avg log surv time in Jovencan
 ```{r}
 fit_lm$coefficients[1]
+
 # mean(log(bee$surv.time[bee$location=="Jovencan"])) # alternatively
 ```
  
