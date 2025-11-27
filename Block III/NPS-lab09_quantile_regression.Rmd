@@ -202,7 +202,7 @@ $$
  A\mathbf{\tilde{x}} = \mathbf{b}
  \\ \mathbf{\tilde{x}} \geq \mathbf{0}
  $$
-Where the objective function is the same but in vector form; $\mathbf{\tilde{x}}$ is a vector which comprises $(\xi, \mathbf{u}, \mathbf{v})$ and $A$ and $\mathbf{b}$ alternative notation for the linear constraint we saw above, taking into consideration the definition of $\mathbf{\tilde{x}}$.
+Where the objective function is the same but in vector form; $\mathbf{\tilde{x}}$ is a vector which comprises $(\xi, \mathbf{u}, \mathbf{v})$ and $A$ and $\mathbf {b}$ alternative notation for the linear constraint we saw above, taking into consideration the definition of $\mathbf{\tilde{x}}$.
 
 Which can be solved with the simplex method! (In the lectures, Prof.ssa Ieva mentioned that it is one possible algorithm in the family of interior point algorithms for optimisation, more on this later!)
 
@@ -728,7 +728,7 @@ option `render = "persp"` to the plot command, or `render="rgl"`.
 ```{r}
 library("interp")
 fit <- rqss(z ~ qss(cbind(x,y), lambda = .01, ndum=100),data = CobarOre)
-plot(fit, axes = FALSE, xlab = "x", ylab = "y") #render="rgl")
+plot(fit, axes = FALSE, xlab = "x", ylab = "y", render="rgl")
 ```
 
 
