@@ -1,0 +1,336 @@
+---
+title: "Multi-class Conformal Classification"
+date: 12/12/2025
+author: "Nonparametric statistics ay 2025/2026"
+output:
+  
+  html_document: 
+    df_print: paged
+    toc: true
+  pdf_document: default
+  html_notebook: 
+    df_print: paged
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+library(rgl)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+knitr::knit_hooks$set(webgl = hook_webgl)
+ggplot2::theme_set(ggplot2::theme_bw())
+```
+
+```{css, echo=FALSE}
+.extracode {
+background-color: lightblue;
+}
+```
+
+## Loading necessary libraries
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr) 
+library(ggplot2)
+library(knitr)
+library(broom)
+library(tidyr)
+library(progress)
+library(pbapply)
+pboptions(type='none')
+library(dbscan)
+library(gridExtra)
+
+library(stats)
+library(randomForest)
+```
+
+\pagebreak
+
+
+## Multi-class Conformal Classification
+The following R implementation directly descends from the methods for conformal classification discussed in:
+
+Romano, Y., Sesia, M., & Candes, E. (2020). Classification with valid and adaptive coverage. Advances in Neural Information Processing Systems, 33, 3581-3591.
+
+[Classification with valid and adaptive coverage](https://proceedings.neurips.cc/paper/2020/file/244edd7e85dc81602b7615cd705545f5-Paper.pdf)
+
+We present below a simplified version of multi-class conformal classification. In this simplified version, we work in split-conformal framework and we make a specific choice of non-conformity scores, namely the *homogeneous nonconformity scores*. They are called *homogeneous* because they are not designed to account for heteroscedasticity in the distribution of $Y \mid X$. Therefore, for classification settings with heteroscedasticity, you should rely on more refined definitions of nonconformity scores. A Python implementation of the conformal classification method, as well as useful extensions for alternative definitions of nonconformity scores, can be found at:
+
+[arc GitHub repository](https://github.com/msesia/arc)
+
+### Conformal classification with *homogeneous nonconformity scores*
+Let $(X_i,Y_i)_{i=1}^{n+1}$, where $X_i \in \mathbb{R}^{p}$ is a matrix of features and $Y_i \in \{1,\dots,K \}$ is a label.
+
+Given a significance level $\alpha$, we want to identify a set $\hat{C}_{1-\alpha} (X_{n+1})$ with marginal coverage at level $1 - \alpha$. That is,
+\begin{align*}
+    \mathbb{P}\left[ Y_{n+1} \in \hat{C}_{1-\alpha}(X_{n+1})\right] \geq 1-\alpha.
+\end{align*}
+
+**Split-conformal classification**
+
+We split the data in training set $D^{\mathrm{train}}$ and calibration set $D^{\mathrm{cal}}$.
+
+$D^{\mathrm{train}}$ is used to fit a (black-box) classification model $\hat{\pi}$:
+\begin{align*}
+    \hat{\pi}_k(x) = \hat{\mathbb{P}}\left[Y=k \mid X=x\right].
+\end{align*}
+Without loss of generality, assume that $\hat{\pi}$ is normalized; i.e., $\sum_{k=1}^{K} \hat{\pi}(x,k) = 1$.
+
+Having pre-trained the model $\hat{\pi}$ on the data in $D^{\mathrm{train}}$, we use the calibration data in $D^{\mathrm{cal}}$ to compute the nonconformity scores $\hat{s}(X_i, k)$, for all $i \in [n]$.
+In particular, we consider a specific definition of nonconformity scores, namely the ones originating from the definition of *homogeneous score function*.
+
+For any label $k \in [K]$ and a vector of features $x$, the *homogeneous score function* with respect to label $k$ reads
+\begin{equation*}
+  \hat{s}(x,k) = 1-\hat{\pi}(x,k),
+\end{equation*}
+where $\hat{\pi}(x,k)$ denotes the probability estimated by the black-box classifier for an observation with features $x$ to have label $k$.
+
+For a point in the calibration set with features $X_i$ and label $Y_i$, we compute the nonconformity score as
+
+\begin{align*}
+  \hat{s}(X_i,Y_i) = 1-\hat{\pi}(X_i,Y_i),
+\end{align*}
+
+where $\hat{\pi}(X_i,Y_i)$ denotes the probability estimated by the black-box classifier for the observation $i$ to have the true label $Y_i$. These scores are then utilized to calibrate a prediction set for the test point $(X_{n+1}, Y_{n+1})$.
+
+For a desired significance level $\alpha \in (0,1)$, we calculate the $\lceil (1+n)\cdot(1-\alpha) \rceil$-th smallest value in $\{\hat{s}(X_i,Y_i)\}_{i \in D^{\mathrm{cal}}}$. This value is used to define a threshold $\hat{\tau}$:
+
+\begin{equation*}
+  \hat{\tau} := \lceil (1+n)\cdot(1-\alpha) \rceil \text{-th smallest value of the scores}.
+\end{equation*}
+
+Then, the prediction set for $Y_{n+1}$ is identified as the set of all labels $k \in [K]$ for which $\hat{\pi}(x,k)$ is larger than $\hat{\tau}$; i.e.,
+\begin{equation}\label{eq:prediction_set}
+  \hat{C}(X_{n+1}) := \{ k \in [K] : \hat{\pi}(x,k) \geq 1 - \hat{\tau} \}.
+\end{equation}
+
+This procedure guarantees that $\hat{C}(X_{n+1})$ has **marginal coverage** at level $1 - \alpha$.
+
+### Implementation aspects
+
+Function for data generation for a classification problem.
+
+```{r}
+## Simulate data for a classification problem
+generate_data_class <- function(n, p, K, seed = NULL) {
+  # n: Total number of observations
+  # p: Number of features
+  # K: Number of classes
+  # seed: Optional seed for reproducibility
+  
+  if (!is.null(seed)) {
+    set.seed(seed)
+  }
+  
+  ## Generate features X
+  X <- matrix(rnorm(n * p, mean = 0, sd = 1), nrow = n, ncol = p)
+  X[, 1] <- sample(c(-1, 1), n, replace = TRUE, prob = c(1 / K, (K - 1) / K))
+  X[, 2] <- sample(c(-1, 1), n, replace = TRUE, prob = c(1 / 4, 3 / 4))
+  X[, 3] <- sample(c(-1, 1), n, replace = TRUE, prob = c(1 / 2, 1 / 2))
+  X[, 4] <- sample(1:K, n, replace = TRUE)
+  
+  ## Compute class probabilities according to X
+  prob_y <- matrix(0, nrow = nrow(X), ncol = K)
+  
+  # Split the feature space in 4 regions
+  leaf_1 <- which(X[, 1] <= 0)
+  leaf_2 <- which(X[, 1] > 0 & X[, 2] <= 0 & X[, 3] <= 0)
+  leaf_3 <- which(X[, 1] > 0 & X[, 2] <= 0 & X[, 3] > 0)
+  leaf_4 <- which(X[, 1] > 0 & X[, 2] > 0)
+  
+  # Leaf 1: Uniform over all classes
+  prob_y[leaf_1, ] <- 1 / K
+  
+  # Leaf 2: Uniform over first half of classes
+  K_half <- ceiling(K / 2)
+  prob_y[leaf_2, 1:K_half] <- 2 / K
+  prob_y[leaf_2, (K_half + 1):K] <- 0
+  
+  # Leaf 3: Uniform over second half of classes
+  prob_y[leaf_3, 1:K_half] <- 0
+  prob_y[leaf_3, (K_half + 1):K] <- 2 / K
+  
+  # Leaf 4: 90% probability to the class specified by the 4th feature
+  if (length(leaf_4) > 0) {
+    X4 <- X[leaf_4, 4]
+    for (k in 1:K) {
+      idx <- leaf_4[X4 == k]
+      if (length(idx) > 0) {
+        prob_y[idx, k]  <- 0.9
+        prob_y[idx, -k] <- (1 - 0.9) / (K - 1)
+        
+      }
+    }
+  }
+  prob_y <- prob_y / rowSums(prob_y) # Normalize probabilities
+  
+  ## Sample labels Y
+  Y <- apply(prob_y, 1, function(probs) {
+    sample(1:K, size = 1, prob = probs)
+  })
+
+  return(list(X = X, Y = Y, prob_y = prob_y))
+}
+
+```
+
+We consider a simple classification example, where each label can take value in 1,...,K.
+
+```{r}
+# Generate data
+n <- 2000
+p <- 8
+K <- 10
+data <- generate_data_class(n = n, p = p, K = K, seed = 2025)
+X_data <- data$X
+Y_data <- data$Y
+```
+
+We generate a test set, which we will use to evaluate the predictions made by the conformal prediction algorithm.
+
+```{r}
+# Generate independent test data
+n_test <- 1000
+data_test <- generate_data_class(n = n_test, p = p, K = K, seed = 2025+n)
+X_test <- data_test$X           
+Y_test <- data_test$Y
+```
+
+
+#### Split conformal for classification
+
+```{r}
+#' Compute conformal prediction interval
+sc_classification <- function(X, Y, X_test, alpha, seed = 2030, allow_empty=TRUE){
+  
+  # Inputs:
+  # X      : Matrix of explanatory variables
+  # Y      : Vector of response labels
+  # X_test : Matrix of explanatory variables for test data
+  # alpha  : target significance level
+  # seed   : Seed for reproducibility
+  
+  set.seed(seed)
+  
+  # Split the data into training and calibration sets
+  n <- nrow(X)
+  p <- ncol(X)
+  train_index <- sample(1:n, size = floor(0.5 * n))
+  X_train <- X[train_index, ]
+  Y_train <- Y[train_index]
+  
+  X_calib <- X[-train_index, ]
+  Y_calib <- Y[-train_index]
+  n.calib <- dim(X_calib)[1]
+  
+  data_train <- data.frame(cbind(Y_train, X_train))
+  names(data_train) <- c("Y", paste0("V", seq_len(ncol(X_train))))
+  data_train$Y <- as.factor(data_train$Y)
+  
+  # Fit any black box classifier (in this case it is a random forest)
+  black_box <- randomForest(Y ~ ., ntree=500, mtry=p, data = data_train)
+  
+  # Estimate class probabilities for calibration points
+  pi_hat_calib <- predict(black_box, newdata = X_calib, type = "prob")
+
+  # Break ties at random
+  pi_hat_calib <- pi_hat_calib + 1e-9 * runif(length(pi_hat_calib), min = -1, max = 1)
+  pi_hat_calib <- pi_hat_calib / rowSums(pi_hat_calib) # Normalize rows to sum to 1
+  
+  # Extract the predicted probability corresponding to the true label
+  # for each observation in the calibration dataset
+  pi_y_calib <- sapply(1:length(Y_calib), function(i) pi_hat_calib[i, Y_calib[i]])
+  
+  # Evaluate the homogeneous scores
+  scores <- 1 - pi_y_calib
+  
+  # Compute threshold (what we called tau_hat)
+  ncs.calib.sort <- c(sort(scores), Inf)
+  ncs.quantile <- ncs.calib.sort[ceiling((n.calib + 1)*(1-alpha))]
+  
+  # Estimate probabilities for the test points
+  pi_hat_test <- predict(black_box, newdata = X_test, type = "prob")
+  
+  # Break ties at random
+  pi_hat_test <- pi_hat_test + 1e-9 * runif(length(pi_hat_test), min = -1, max = 1)
+  pi_hat_test <- pi_hat_test / rowSums(pi_hat_test) # Normalize rows to sum to 1
+  
+  # Build the prediction sets
+  n.test <- dim(X_test)[1]
+  S_hat <- vector("list", n.test)
+  for (i in 1:n.test) {
+    S_hat[[i]] <- which(pi_hat_test[i, ] >= 1 - ncs.quantile)
+    if (!allow_empty && length(S_hat[[i]]) == 0) {
+      S_hat[[i]] <- which.max(pi_hat_test[i, ])
+    }
+  }
+  
+  return(S_hat)
+  
+}
+
+```
+
+
+Function for evaluating the conformal prediction sets.
+
+```{r}
+## Function for evaluating predictions
+evaluate_predictions <- function(S, X, Y, verbose = TRUE) {
+  # S: List of length n, where each element is a vector of prediction sets
+  # X: n x p data matrix of explanatory variables
+  # Y: n-length vector of true response labels
+  # verbose: Whether to print the metrics
+  
+  n <- length(Y)
+  
+  # Compute marginal coverage
+  marginal_coverage <- mean(sapply(1:n, function(i) Y[i] %in% S[[i]]))
+  
+  # Compute average size of prediction sets
+  size <- mean(sapply(S, length))
+  
+  # Compute average size of prediction sets that contain the true label
+  idx_cover <- which(sapply(1:n, function(i) Y[i] %in% S[[i]]))
+  size_cover <- if (length(idx_cover) > 0) {
+    mean(sapply(S[idx_cover], length))
+  } else {
+    NA
+  }
+  
+  # Print summary
+  if (verbose) {
+    cat(sprintf("Marginal coverage       : %2.3f%%\n", marginal_coverage * 100))
+    cat(sprintf("Average size            : %2.3f\n", size))
+    cat(sprintf("Average size | cover    : %2.3f\n", ifelse(is.na(size_cover), NA, size_cover)))
+  }
+  
+  # Return results as a list
+  return(list(
+    marginal_coverage = marginal_coverage,
+    average_size = size,
+    average_size_cover = size_cover
+  ))
+}
+
+```
+
+Usage
+
+```{r}
+# Desired coverage level (1-alpha)
+alpha <- 0.1
+
+# Apply split conformal classification
+S <- sc_classification(X_data, Y_data, X_test, alpha)
+
+# Evaluate prediction sets
+metrics <- evaluate_predictions(S, X_test, Y_test)
+
+```
+

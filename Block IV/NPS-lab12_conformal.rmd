@@ -1,0 +1,699 @@
+---
+title: "Lab 12 - Conformal Prediction"
+date: 12/12/2025
+author: "Nonparametric statistics ay 2025/2026"
+output:
+  
+  html_document: 
+    df_print: paged
+    toc: true
+  pdf_document: default
+  html_notebook: 
+    df_print: paged
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+library(rgl)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+knitr::knit_hooks$set(webgl = hook_webgl)
+ggplot2::theme_set(ggplot2::theme_bw())
+```
+
+```{css, echo=FALSE}
+.extracode {
+background-color: lightblue;
+}
+```
+
+## Loading necessary libraries
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr) 
+library(ggplot2)
+library(knitr)
+library(broom)
+library(tidyr)
+library(progress)
+library(pbapply)
+pboptions(type='none')
+library(dbscan)
+library(gridExtra)
+```
+
+\pagebreak
+
+
+## Normalized Conformal Prediction
+In the standard conformal methods for regression -- i.e., the ones which employ standard nonconformity measures -- the resulting predictive regions have more or less the same width for all examples in the test set.
+In many cases, it would be more natural for the size of the regions to vary according to how "hard" it is to predict each example.
+It is possible to define convenient nonconformity measures, which result in predictive regions with varying width depending on the expected accuracy of the algorithm on each example. As a result, the predictive regions output by this adaptive methodology are typically much tighter than those produced by the simple regression measure.
+
+Function for data generation
+
+```{r}
+sample_data <- function(n, seed)
+{
+  set.seed(seed)
+  x <- seq(-3, 3, length.out = n)
+  sigma_1 <- 0.3
+  sigma_2 <- 1
+  noise_sd <- sigma_1 + sigma_2 * exp(-x^2 / 2)
+  y <- 2 * x + rnorm(n, sd = noise_sd)
+  
+  out <- list("x" = x,
+              "y" = y)
+  
+  return(out)
+}
+```
+
+We consider again a simple regression example.
+
+```{r}
+seed <- 3
+n <- 1000
+
+data <- sample_data(n, seed)
+x <- data$x
+y <- data$y
+
+par(mfrow=c(1,2))
+hist(y, breaks=10, col='lightblue', main="Histogram of y values")
+plot(x, y, col='lightblue', main="Data")
+```
+
+
+```{r}
+# Fit linear model with ols
+mod <- lm(y ~ x, data)
+
+# Display the regression function
+x.grid <- data.frame("x"=seq(range(data$x)[1],range(data$x)[2],length.out=1000))
+y.grid.hat <- predict(mod, x.grid)
+par(mfrow=c(1,1))
+plot(x, y, col='lightblue', main="Data and linear regression function")
+lines(x.grid$x, y.grid.hat, type='l', col='black', lwd=2)
+```
+
+
+Function for evaluating the predictions
+
+```{r}
+evaluate_predictions <- function(x.test, y.test, x.grid, lower, upper, view_plot=T){
+  covered <- (y.test >= lower)*(y.test<=upper)
+  coverage <- mean(covered)
+  width <- mean(upper-lower)
+  
+  if(view_plot){
+    idx.sort <- sort(x.test$x, index.return=TRUE)$ix
+    plot(x.test$x[idx.sort], y.test[idx.sort], col='lightblue', main=paste0("Prediction interval, alpha=",alpha, ", coverage=", round(coverage,2), ", width=", round(width,2)),
+     xlab="x test", ylab="y test")
+    lines(x.test$x[idx.sort], lower[idx.sort], lty=3, col='black', lwd=2)
+    lines(x.test$x[idx.sort], upper[idx.sort], lty=3, col='black', lwd=2)
+  }
+  
+  out <- list("coverage"=coverage,
+              "width"=width)
+  return(out)
+}
+
+# Build a test set for the evaluations
+
+n.test <- 1000
+data.test <- sample_data(n.test, seed+n)
+x.test <- data.test$x
+y.test <- data.test$y
+x.test <- data.frame("x"=x.test)
+
+```
+
+
+#### Standard split conformal
+
+```{r}
+#' Compute conformal prediction interval
+reg_split_conformal <- function(x, y, x.test, alpha){
+  n <- length(y)
+  n.train <- floor(n/2)
+  n.calib <- n-n.train
+  
+  # Split the data into training and calibrations sets
+  idxs.train <- sample(1:n, size=n.train)
+  
+  x.train <- x[idxs.train]
+  y.train <- y[idxs.train]
+  x.calib <- x[-idxs.train]
+  y.calib <- y[-idxs.train]
+  
+  data <- data.frame("x"=x.train, "y"=y.train)
+  mod <- lm(y~x, data)
+  ncs.calib <- abs(y.calib - predict(mod, data.frame("x"=x.calib)))
+  ncs.calib.sort <- c(sort(ncs.calib), Inf)
+  ncs.quantile <- ncs.calib.sort[ceiling((n.calib + 1)*(1-alpha))]
+  
+  # Construct the prediction interval
+  x.test <- data.frame("x"=x.test)
+  y.hat <- predict(mod, x.test)
+  lower_bound <- y.hat - ncs.quantile
+  upper_bound <- y.hat + ncs.quantile
+  
+  out <- list("lower_bound"=lower_bound,
+              "upper_bound"=upper_bound)
+  
+}
+
+# Nominal significance level
+alpha <- .1
+pi.conformal <- reg_split_conformal(x, y, x.test, alpha)
+
+performance <- evaluate_predictions(x.test, y.test, lower=pi.conformal$lower_bound, upper=pi.conformal$upper_bound)
+```
+
+#### Normalized split conformal
+```{r}
+#' Compute conformal prediction interval
+reg_split_normalized_conformal <- function(x, y, x.test, alpha){
+  n <- length(y)
+  n.train <- floor(n/2)
+  n.calib <- n-n.train
+  
+  # Split the data into training and calibrations sets
+  idxs.train <- sample(1:n, size=n.train)
+  
+  x.train <- x[idxs.train]
+  y.train <- y[idxs.train]
+  x.calib <- x[-idxs.train]
+  y.calib <- y[-idxs.train]
+  
+  data <- data.frame("x"=x.train, "y"=y.train)
+  mod <- lm(y~x, data)
+  
+  ## Estimate how difficult it is to predict points on the calibration set
+  epsilon.train <- abs(mod$residuals)
+  log_residuals <- log(epsilon.train + 1e-6)
+  difficulty_model <- lm(log_residuals ~ I(x^2), data)
+  
+  y.calib.hat <- predict(mod, newdata = data.frame("x" = x.calib))
+  residuals <- abs(y.calib - y.calib.hat)
+  
+  # Predict sigma on the calibration set
+  sigma.calib <- exp(predict(difficulty_model, newdata = data.frame("x" = x.calib)))
+  ncs.calib <- residuals / sigma.calib
+  ncs.calib.sort <- c(sort(ncs.calib), Inf)
+  ncs.quantile <- ncs.calib.sort[ceiling((n.calib + 1)*(1-alpha))]
+
+  # Construct the prediction interval
+  y.test.hat <- predict(mod, newdata = data.frame("x" = x.test))
+  sigma.test.hat <- exp(predict(difficulty_model, newdata = data.frame("x" = x.test)))
+  lower_bound <- y.test.hat - ncs.quantile * sigma.test.hat
+  upper_bound <- y.test.hat + ncs.quantile * sigma.test.hat
+  
+  out <- list("lower_bound"=lower_bound,
+              "upper_bound"=upper_bound)
+  
+}
+
+# Nominal significance level
+alpha <- .1
+pi.conformal <- reg_split_normalized_conformal(x, y, x.test, alpha)
+
+performance <- evaluate_predictions(x.test, y.test, lower=pi.conformal$lower_bound, upper=pi.conformal$upper_bound)
+```
+
+
+
+## Tutorial on ConformalInference package
+
+The `ConformalInference` R package allows you to automatically generate conformal prediction intervals - both in full and split conformal framework - from very complex regression model.
+
+```{r, message=FALSE, warning=FALSE}
+# devtools::install_github(repo="ryantibs/conformal", subdir="conformalInference")
+library(conformalInference)
+
+```
+
+The ConformalInference package has a "functional programming" soul, in the sense
+that one can "extract" the training and the prediction function of the considered model. The model must not be necessary linear. On the contrary, the package allows also to exploit non-linear prediction models.
+
+Let us load the dataset that we will use to cover this part.
+
+```{r, message=FALSE, warning=FALSE}
+load('nlr_data.rda')
+attach(Prestige)
+```
+
+Prestige is a dataset coming from the car package containing 102 observations of 6 variables. Each row is an observation that relates to an occupation (e.g. chemists, general managers, physicists,...). The columns relate to predictors such as average years of education, percentage of women in the occupation, average income, prestige of the occupation, etc.
+
+### Linear models
+
+
+**Multivariate linear regression model**
+
+Let us start from a practical example. If we wanted to construct prediction intervals for forecasts made with a multivariate linear regression model, we would need to:
+
+```{r}
+model_poly <- lm(prestige ~ poly(income, degree=2))
+
+# Matrix of the features of the observed dataset
+X <- matrix(poly(income, degree=2), ncol=2)
+
+# Vector of responses of the observed dataset
+y <- prestige
+
+# Matrix of features of the new test point
+x0 <- matrix(data=c(0.2,0.2), nrow=1, ncol=2)
+
+# Function to perform model training
+lm_train = lm.funs(intercept = T)$train.fun
+
+# Function to perform point prediction
+lm_predict = lm.funs(intercept = T)$predict.fun
+```
+
+
+Then we give (i) the matrix of observed features, (ii) the observed response variable and (iii) the matrix of features of the test set, (iv) the functions used for training the model and for prediction, as input to the `conformal.pred` function, namely the function that builds the conformal PI in a full-conformal framework.
+
+
+```{r}
+alpha <- 0.1
+c_preds <- conformal.pred(x=X, y=y, x0=x0, alpha=alpha,
+                          verbose=F, train.fun=lm_train, predict.fun=lm_predict,
+                          num.grid.pts = 200)
+
+sprintf("Point prediction: %f", c_preds$pred)
+sprintf("Lower bound: %f", c_preds$lo)
+sprintf("Upper bound: %f", c_preds$up)
+```
+
+
+Now we want to have a visualization of the conformal prediction intervals for many possible values of income. To do so, we need to specify as the matrix of features of the test set the evaluations of the predictors over a grid of income values. We proceed as follows:
+
+```{r}
+#' In this case, since we want to have a visualization of the conformal
+#' prediction intervals for many points of the domain, our matrix of features
+#' of the test set will be made by the evaluations of the predictors over a grid.
+income.grid <- seq(range(income)[1],range(income)[2],by=100)
+X_test_grid <- matrix(poly(income.grid,degree=2,
+                           coefs=attr(poly(income,degree=2),"coefs")),
+                      ncol=2)
+```
+
+Now we can compute the point prediction and the lower and upper bounds of the conformal intervals of each point of the test points in `X_test_grid`.
+
+```{r, message=FALSE, warning=FALSE}
+alpha <- 0.1
+c_preds <- conformal.pred(x=X, y=y, x0=X_test_grid, alpha=alpha,
+                          verbose=F, train.fun=lm_train, predict.fun=lm_predict,
+                          num.grid.pts = 200)
+
+plot(income, prestige, xlim=range(income.grid), cex =.5, col ="lightblue",
+     main='Polynomial Regression')
+lines(income.grid, c_preds$pred, lwd=2, col ="black", lty=1)
+matlines(income.grid, cbind(c_preds$up,c_preds$lo), lwd=2, col="black",lty=2)
+```
+
+In order to compute the PI in a split conformal framework, one can use the `conformal.pred.split` function.
+
+```{r}
+c_preds_split <- conformal.pred.split(x=X, y=y, x0=X_test_grid, alpha=alpha,
+                                      verbose=F,
+                                      train.fun=lm_train,
+                                      predict.fun=lm_predict,
+                                      rho=0.5)
+
+plot(income, prestige, xlim=range(income.grid), cex =.5, col ="lightblue",
+     main='Polynomial Regression')
+lines(income.grid, c_preds_split$pred, lwd=2, col ="black", lty=1)
+matlines(income.grid, cbind(c_preds_split$up,c_preds_split$lo), lwd=2, col="black", lty=2)
+```
+
+Of course, beware that every execution of the `conformal.pred.split` function will build prediction intervals that differ in principle.
+
+More generally, whenever a point predictor can be formulated as a linear regression model, everything can be done in the same exact fashion. The only thing to pay attention to is the definition of the design matrix.
+
+**Splines**
+
+```{r message=FALSE}
+library(splines)
+```
+
+```{r}
+breaks <- c(quantile(income, probs=c(0.2,0.4,0.6,0.8)), 15000)
+model_cut <- lm(prestige ~ bs(income, degree=3, knots=breaks))
+
+# Matrix of features of the observed data
+X <- bs(income, degree=3, knots=breaks)
+
+# Vector of responses of the observed dataset
+y <- prestige
+
+# And evaluate the predictors over a grid
+X_test_grid <- matrix(bs(income.grid, degree=3, knots=breaks), nrow=length(income.grid))
+
+# Function to perform model training
+lm_train = lm.funs(intercept = T)$train.fun
+
+# Function to perform point prediction
+lm_predict = lm.funs(intercept = T)$predict.fun
+```
+
+Then everything works just as before.
+
+```{r}
+c_preds <- conformal.pred(x=X, y=y, x0=X_test_grid,
+                          alpha=alpha, verbose=F, train.fun = lm_train,
+                          predict.fun=lm_predict, num.grid.pts=200)
+
+plot(income, prestige, xlim=range(income.grid), cex=.5, col ="lightblue",
+     main='Spline Regression')
+lines(income.grid, c_preds$pred, lwd=2, col="black", lty=1)
+matlines(income.grid, cbind(c_preds$up,c_preds$lo), lwd=1, col="black", lty=2)
+```
+
+### Nonlinear models
+In a "nonlm" case, custom functions for the point predictor need to be created, In particular, we need to explicitly define the prediction model objects, which will be used to output predictions.
+
+**Smoothing splines**
+
+Let us first start with smoothing splines.
+
+```{r}
+fit <- smooth.spline(income, prestige)
+opt <- fit$df
+```
+
+Now define the function for training the point predictor and the function actually used for prediction.
+
+```{r}
+train_ss <- function(x, y, out=NULL){
+  smooth.spline(x, y, df=opt)
+}
+
+predict_ss <- function(obj, new_x){
+  predict(obj, new_x)$y
+}
+
+# Example of use
+# trained_pred <- train_ss(income, prestige)
+# predict_ss(trained_pred, income)
+```
+
+These ad-hoc functions can be given as input to the `conformal.pred` function:
+
+```{r}
+c_preds <- conformal.pred(x=income, y=prestige, x0=income.grid,
+                          alpha=alpha, verbose=F, train.fun=train_ss, predict.fun=predict_ss,
+                          num.grid.pts=200)
+
+plot(income, prestige, cex =.5, col ="lightblue", main='Smoothing spline')
+lines(income.grid, c_preds$pred, lwd=2, col ="black", lty=1)
+matlines(income.grid, cbind(c_preds$up,c_preds$lo), lwd=2, col ="black", lty=2)
+```
+
+**GAMs**
+
+```{r message=FALSE, warning=FALSE}
+library(mgcv)
+model_gam <- gam(prestige ~ s(education, bs='cr') + s(income, bs='cr'))
+
+# Evaluate the predictors on a grid
+education.grid <- seq(range(education)[1], range(education)[2], length.out=100)
+income.grid <- seq(range(income)[1], range(income)[2], length.out=100)
+grid <- expand.grid(education.grid, income.grid)
+names(grid) <- c('education', 'income')
+pred <- predict(model_gam, newdata=grid)
+```
+
+```{r, webgl=T, message=FALSE}
+library(rgl)
+
+persp3d(education.grid, income.grid, pred, col='forestgreen')
+points3d(education, income, prestige, col='lightblue', size=5)
+```
+
+Again, we manually define the function to train the point predictor and the function used for prediction.
+
+```{r}
+train_gam <- function(x, y, out=NULL){
+  colnames(x) <- c('var1','var2')
+  train_data <- data.frame(y, x)
+  model_gam <- gam(y ~ s(var1, bs='cr') + s(var2, bs='cr'), data=train_data)
+}
+
+predict_gam <- function(obj, new_x){
+  new_x <- data.frame(new_x)
+  colnames(new_x) <- c('var1', 'var2')
+  predict.gam(obj, new_x)
+}
+```
+
+And we generate our predictions, just as before. In this case, let us do the predictions for
+just one test point, which has as values of education and income the median education and the median income of the observed points.
+
+We can do it in a full conformal framework
+```{r}
+# Full conformal framework
+c_preds <- conformal.pred(x=cbind(education,income), y=prestige,
+                          x0=c(median(education),median(income)),
+                          alpha=alpha, verbose=F,
+                          train.fun=train_gam, predict.fun=predict_gam,
+                          num.grid.pts=200)
+sprintf("Point prediction: %f", c_preds$pred)
+sprintf("Lower bound: %f", c_preds$lo)
+sprintf("Upper bound: %f", c_preds$up)
+```
+
+and in a split conformal framework
+```{r}
+# Split conformal framework
+c_preds_split <- conformal.pred.split(x=cbind(education,income), y=prestige,
+                                      x0=c(median(education),median(income)),
+                                      alpha=alpha, verbose=F,
+                                      train.fun=train_gam,
+                                      predict.fun=predict_gam,
+                                      rho = 0.5)
+
+sprintf("Point prediction: %f", c_preds_split$pred)
+sprintf("Lower bound: %f", c_preds_split$lo)
+sprintf("Upper bound: %f", c_preds_split$up)
+```
+
+### Conformal prediction for a multivariate response
+
+The `conformalInference.multi` package plays the multivariate counterpart of `conformalInference`.
+
+```{r message=FALSE, warning=FALSE}
+#install.packages('conformalInference.multi')
+library(conformalInference.multi)
+```
+
+Let's generate some multivariate data
+
+```{r}
+n = 25
+p = 4
+q = 2
+
+mu = rep(0,p)
+x = mvtnorm::rmvnorm(n, mu)
+beta = sapply(1:q, function(k) c(mvtnorm::rmvnorm(1,mu)))
+y = x%*%beta + t(mvtnorm::rmvnorm(q,1:(n)))
+q = ncol(y)
+
+x0 = x[n,]
+y0 = y[n,]
+n0 = nrow(y0)
+
+```
+
+Let's declare the fitting and prediction function
+
+```{r}
+fun=mean_multi()
+
+```
+
+And then run the usual full conformal algorithm
+
+```{r}
+final.full <- conformal.multidim.full(x, y, x0, fun$train.fun,
+                                      fun$predict.fun, score="l2",
+                                      num.grid.pts.dim=100, grid.factor=1.25,
+                                      verbose=FALSE)
+
+plot_multidim(final.full)
+```
+
+
+We can customise the ncm:
+
+```{r}
+final.full <- conformal.multidim.full(x, y, x0, fun$train.fun,
+                                      fun$predict.fun, score="max",
+                                      num.grid.pts.dim=100, grid.factor=1.25,
+                                      verbose=FALSE)
+
+plot_multidim(final.full)
+```
+
+
+### Conformal prediction for a functional response
+
+First, we load the required packages and the data.
+
+```{r message=FALSE, warning=FALSE}
+library(fda)
+library(roahd)
+library(conformalInference.fd)
+data=growth #data from the berkeley growth study
+
+matplot(data$age, data$hgtm, type='l',col='forestgreen', xlab="Age", ylab="Height",
+        ylim=c(60,200))
+matlines(data$age, data$hgtf, type='l',col='darkorange', xlab="Age", ylab="Height")
+```
+
+
+We aim to generate prediction bands for a new female and for a new male. To do so, we need to separate the datasets separately conduct conformal inference.
+
+```{r fig.width=10, fig.height=4}
+berkeley_f=t(data$hgtf)
+berkeley_m=t(data$hgtm)
+
+par(mfrow=c(1,2))
+matplot(data$age, data$hgtf, type='l',col='darkorange', xlab="Age", ylab="Height",
+        main="Females", ylim=c(60,200))
+matplot(data$age, data$hgtm, type='l',col='forestgreen', xlab="Age", ylab="Height",
+        main="Male", ylim=c(60,200))
+```
+
+We proceed in a split conformal setting.
+
+We first identify the upper and the lower bounds of the prediction region for the females.
+
+```{r}
+dataset <- berkeley_f
+x.grid <- growth$age
+f_data <- fData(x.grid, dataset)
+rho <- 0.5 # train and calibration split ratio
+
+alpha = 0.1
+
+fun=mean_lists()
+x0=list(as.list(x.grid))
+
+band <- conformal.fun.split(NULL, NULL, f_data, NULL, x0, fun$train.fun, fun$predict.fun,
+                            alpha = alpha,
+                            split=NULL, seed=2025, randomized=FALSE, seed.rand=FALSE,
+                            verbose=FALSE, rho=rho, s.type="st-dev")
+
+upper_b_f <- band$up[[1]][[1]]
+lower_b_f <- band$lo[[1]][[1]]
+point_pred_f <- band$pred[[1]][[1]]
+```
+
+And then we do the same steps for the males.
+
+```{r}
+dataset <- berkeley_m
+x.grid <- growth$age
+f_data <- fData(x.grid, dataset)
+rho <- 0.5 # train and calibration split ratio
+
+alpha = 0.1
+
+fun=mean_lists()
+x0=list(as.list(x.grid))
+
+band <- conformal.fun.split(NULL, NULL, f_data, NULL, x0, fun$train.fun, fun$predict.fun,
+                            alpha = alpha,
+                            split=NULL, seed=2025, randomized=FALSE, seed.rand=FALSE,
+                            verbose=FALSE, rho=rho, s.type="st-dev")
+
+upper_b_m <- band$up[[1]][[1]]
+lower_b_m <- band$lo[[1]][[1]]
+point_pred_m <- band$pred[[1]][[1]]
+
+```
+
+
+Lastly, we plot the resulting prediction regions for a new female (left) and for a new male (right).
+
+```{r fig.width=10, fig.height=4}
+par(mfrow=c(1,2))
+plot(x.grid, upper_b_f, type='l', col="black", lty=2, xlab="Age", ylab="Height", lwd=1.5,
+     ylim=c(60,200),
+     main="Functional CP band for a female")
+lines(x.grid, point_pred_f, type='l', col="darkorange", lwd=1.5)
+lines(x.grid, lower_b_f, type='l', col="black", lty=2, lwd=1.5)
+
+plot(x.grid, upper_b_m, type='l', col="black", lty=2, xlab="Age", ylab="Height", lwd=1.5,
+     ylim=c(60,200),
+     main="Functional CP band for a male")
+lines(x.grid, point_pred_m, type='l', col="forestgreen", lwd=1.5)
+lines(x.grid, lower_b_m, type='l', col="black", lty=2, lwd=1.5)
+```
+
+
+**Final remark**
+
+Let us just add a final comment on this. If instead of directly using the `conformalInference.fd` package we wanted to manually build the conformal prediction region, we would use the following commands.
+
+
+```{r}
+alpha = 0.1
+n = nrow(berkeley_m)
+i1 = sample(1:n,n/2)
+t_set = berkeley_m[i1,] #training test
+c_set = berkeley_m[-i1,] #calibration set
+n.cal = dim(c_set)[1]
+mu = colMeans(t_set)
+Mu = matrix(mu, nrow=n.cal, ncol=length(mu), byrow=TRUE)
+res = abs(c_set - Mu)
+ncm = apply(res, 1, max) #max res for each age
+ncm.quantile = quantile(ncm, prob=(1-alpha)*(n.cal+1)/n.cal)
+
+upper_b = mu + ncm.quantile
+lower_b = mu - ncm.quantile
+```
+
+With this method, we are not including the possibility for the conformal prediction region to adapt its width depending on the variability of the curves over the domain. If we wanted to have adaptivity, we could include a modulation function in the definition of the nonconformity measure. This is what we do below.
+
+```{r}
+S = apply(t_set, 2, sd)
+S_mat =  matrix(S, nrow=n.cal, ncol=length(S), byrow=TRUE)
+res = (c_set-Mu)/S_mat
+ncm = apply(res, 1, max) #max res for each age
+ncm_sort=c(sort(ncm), Inf) #order res and add inf
+ncm.quantile.normalized = ncm_sort[ceiling((n.cal + 1)*(1-alpha))]
+
+upper_b_adaptive = mu + ncm.quantile.normalized*S
+lower_b_adaptive = mu - ncm.quantile.normalized*S
+```
+
+Now we plot the two conformal prediction regions identified with the classical nonconformity measure (left) and the nonconformity measure with the modulation function (right).
+
+```{r fig.width=10, fig.height=4}
+par(mfrow=c(1,2))
+plot(x.grid, upper_b, type='l', col="black", lty=2, xlab="Age", ylab="Height",
+     lwd=1.5, ylim=c(60,200),
+     main="Non-adaptive functional CP for a male")
+lines(x.grid, mu, type='l', col="forestgreen", lwd=1.5)
+lines(x.grid, lower_b, type='l', col="black", lty=2, lwd=1.5)
+
+plot(x.grid, upper_b_adaptive, type='l', col="black", lty=2, xlab="Age", ylab="Height",
+     lwd=1.5, ylim=c(60,200),
+     main="Adaptive functional CP for a male")
+lines(x.grid, mu, type='l', col="forestgreen", lwd=1.5)
+lines(x.grid, lower_b_adaptive, type='l', col="black", lty=2, lwd=1.5)
+```
+
+
+What we notice is, in fact, that the conformalInference.fd package includes the modulation function (as default) to adapt the width of the region to the variability of the curves in different points of the domain.
+
+
