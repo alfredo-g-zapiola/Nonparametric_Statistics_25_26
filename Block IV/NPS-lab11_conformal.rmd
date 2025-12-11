@@ -101,14 +101,14 @@ PI.param <- range(test_grid[index_in])
 
 **Conformal prediction set**
 
-By resorting to conformal inference in the full conformal setting, we now construct the distribution-free counterpart of the Fisher's prediction interval (indeed, we are considering the same non-conformity measure as before!).
+By resorting to conformal inference in the full conformal setting, we now construct analternative to the Fisher's prediction interval that does not rely on any assumption on the data generating process.
 
 ```{r}
 wrapper_full <- function(grid_point, y){
   aug_y <- c(grid_point,y)
   ncm <- numeric(length(aug_y))
   for (i in 1:length(aug_y)) {
-    ncm[i] <- abs(aug_y[i] - mean(aug_y[-i]))/sd(aug_y[-i])/sqrt(1+1/length(aug_y[-i]))
+    ncm[i] <- abs(aug_y[i] - mean(aug_y[-i]))
   }
   sum(ncm>=ncm[1])/(length(aug_y))
 }
@@ -289,7 +289,7 @@ The conformal prediction machinery guarantees validity of the resulting predicti
 
 Let us sample the data from a bimodal distribution, and repeat the construction of the conformal prediction set when employing as non-conformity measures:
 
-* the scaled absolute value of the difference from the mean,
+* the absolute value of the difference from the mean,
 
 * the average euclidean distance from the k-nearest neighbors.
 
@@ -305,7 +305,7 @@ y <- c(rnorm(n/2,mean=-2.6),rnorm(n/2,mean=2.6))
 hist(y, col='lightblue')
 ```
 
-#### Scaled absolute value of the difference from the mean
+#### Absolute value of the difference from the mean
 
 ```{r}
 n_grid <- 1000
