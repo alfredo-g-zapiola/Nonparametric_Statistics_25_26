@@ -267,7 +267,10 @@ X <- matrix(poly(income, degree=2), ncol=2)
 y <- prestige
 
 # Matrix of features of the new test point
-x0 <- matrix(data=c(0.2,0.2), nrow=1, ncol=2)
+income0 <- income[1]
+x0 <- matrix(poly(income0,degree=2,
+                  coefs=attr(poly(income,degree=2),"coefs")),
+             nrow=1, ncol=2)
 
 # Function to perform model training
 lm_train = lm.funs(intercept = T)$train.fun
