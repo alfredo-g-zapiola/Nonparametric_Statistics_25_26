@@ -52,7 +52,7 @@ library(gridExtra)
 ## Normalized Conformal Prediction
 In the standard conformal methods for regression -- i.e., the ones which employ standard nonconformity measures -- the resulting predictive regions have more or less the same width for all examples in the test set.
 In many cases, it would be more natural for the size of the regions to vary according to how "hard" it is to predict each example.
-It is possible to define convenient nonconformity measures, which result in predictive regions with varying width depending on the expected accuracy of the algorithm on each example. As a result, the predictive regions output by this adaptive methodology are typically much tighter than those produced by the simple regression measure.
+It is possible to define convenient nonconformity measures, which result in predictive regions with varying width depending on the expected accuracy of the algorithm on each example. As a result, the predictive regions output by this adaptive methodology are typically much tighter than those produced when using as nonconformity measure the classical absolute residual.
 
 Function for data generation
 
